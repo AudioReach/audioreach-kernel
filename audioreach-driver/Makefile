@@ -1,6 +1,6 @@
 obj-m += audioreach_driver.o
 
-audio_reach_driver-objs := \
+audioreach_driver-objs := \
     q6apm_audio_mem.o \
     q6apm_audio_pkt.o \
     q6apm_lpass_dummy-dais.o \
