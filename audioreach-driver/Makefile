@@ -6,7 +6,7 @@ audioreach_driver-objs := \
     q6apm_lpass_dummy_dais.o \
     q6prm_audioreach_clock.o \
     q6prm_audioreach.o \
-    qcs6490_audioreach_common.o
+    audioreach_common.o
 ccflags-y += -I$(KERNEL_SRC)/sound/soc/qcom/qdsp6 -I$(KERNEL_SRC)/sound/soc/qcom
 
 
