@@ -15,7 +15,7 @@
 #include "q6apm.h"
 #include "q6prm.h"
 #include "audioreach.h"
-#include "q6prm-audioreach.h"
+#include "q6prm_audioreach.h"
 
 struct q6prm {
 	struct device *dev;

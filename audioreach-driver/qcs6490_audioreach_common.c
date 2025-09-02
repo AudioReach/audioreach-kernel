@@ -13,7 +13,7 @@
 #include <sound/simple_card_utils.h>
 #include "qdsp6/q6afe.h"
 #include "sdw.h"
-#include "q6prm-audioreach.h"
+#include "q6prm_audioreach.h"
 
 #define NAME_SIZE	32
 

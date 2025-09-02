@@ -10,7 +10,7 @@
 #include <linux/platform_device.h>
 #include "q6dsp-lpass-clocks.h"
 #include "q6prm.h"
-#include "q6prm-audioreach.h"
+#include "q6prm_audioreach.h"
 
 
 #define Q6PRM_CLK(id) {					\
