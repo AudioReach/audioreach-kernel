@@ -111,10 +111,74 @@ struct audio_pkt_clnt_ch {
 	audio_pkt_clnt_cb_fn func;
 };
 
+
+#define MAX_PKT_BACKUP 128
+
+struct port_backup {
+	uint32_t src_port;
+	uint32_t dest_port;
+};
+
+struct port_backup_fifo {
+	struct port_backup entries[MAX_PKT_BACKUP];
+	int head;
+	int tail;
+	spinlock_t lock;
+};
+
+static struct port_backup_fifo port_fifo = {
+	.head = 0,
+	.tail = 0,
+	.lock = __SPIN_LOCK_UNLOCKED(port_fifo.lock),
+};
+
 #define dev_to_audpkt_dev(_dev) container_of(_dev, struct q6apm_audio_pkt, dev)
 #define cdev_to_audpkt_dev(_cdev) container_of(_cdev, struct q6apm_audio_pkt, cdev)
 
 static struct q6apm_audio_pkt *g_apm;
+
+static bool fifo_is_full(void) {
+	return ((port_fifo.tail + 1) % MAX_PKT_BACKUP) == port_fifo.head;
+}
+
+static bool fifo_is_empty(void) {
+	return port_fifo.head == port_fifo.tail;
+}
+
+static int fifo_push(uint32_t src_port, uint32_t dest_port)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&port_fifo.lock, flags);
+	if (fifo_is_full()) {
+		spin_unlock_irqrestore(&port_fifo.lock, flags);
+		return -ENOMEM;
+	}
+
+	port_fifo.entries[port_fifo.tail].src_port = src_port;
+	port_fifo.entries[port_fifo.tail].dest_port = dest_port;
+	port_fifo.tail = (port_fifo.tail + 1) % MAX_PKT_BACKUP;
+	spin_unlock_irqrestore(&port_fifo.lock, flags);
+
+	return 0;
+}
+
+static int fifo_pop(struct port_backup *backup)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&port_fifo.lock, flags);
+	if (fifo_is_empty()) {
+		spin_unlock_irqrestore(&port_fifo.lock, flags);
+		return -ENOENT;
+	}
+
+	*backup = port_fifo.entries[port_fifo.head];
+	port_fifo.head = (port_fifo.head + 1) % MAX_PKT_BACKUP;
+	spin_unlock_irqrestore(&port_fifo.lock, flags);
+
+	return 0;
+}
 
 int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
@@ -427,6 +491,15 @@ ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 		}
 	}
 
+	// Backup original ports
+	ret = fifo_push(audpkt_hdr->src_port, audpkt_hdr->dest_port);
+	if (ret < 0) {
+		AUDIO_PKT_ERR("FIFO full, cannot backup ports\n");
+		goto free_kbuf;
+	} else {
+		audpkt_hdr->src_port = GPR_APM_MODULE_IID;
+	}
+
 	if (mutex_lock_interruptible(&audpkt_dev->lock)) {
 		ret = -ERESTARTSYS;
 		goto free_kbuf;
@@ -580,10 +653,20 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
 	struct sk_buff *skb;
+	struct port_backup backup;
+	int ret;
 
 
         hdr_size = hdr->hdr_size * 4;
         pkt_size = hdr->pkt_size;
+
+
+	ret = fifo_pop(&backup);
+	if (ret < 0)
+		AUDIO_PKT_ERR("Failed to pop backup ports from FIFO\n");
+
+	hdr->dest_port = backup.src_port;
+	hdr->src_port = backup.dest_port;
 
         pkt = kmalloc(pkt_size, GFP_KERNEL);
         if (!pkt)
@@ -607,9 +690,9 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&apm->readq);
 	if(hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
-                 //result = data->payload;
-                 //apm->result.opcode = hdr->opcode;
-                 //apm->result.status = 0;
+                 result = data->payload;
+                 apm->result.opcode = hdr->opcode;
+                 apm->result.status = 0;
                  /* First word of result it state */
                  apm->state = hdr->opcode;
      }

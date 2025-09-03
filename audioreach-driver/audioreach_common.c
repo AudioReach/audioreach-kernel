@@ -140,6 +140,66 @@ int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+
+void audioreach_get_link_name(const char **link_name, int dai_id)
+{
+	switch (dai_id) {
+        case WSA_CODEC_DMA_RX_0:
+		*link_name = "CODEC_DMA-LPAIF_WSA-RX-0";
+                break;
+	case VA_CODEC_DMA_TX_0:
+		*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
+		break;
+	case RX_CODEC_DMA_RX_0:
+		*link_name = "CODEC_DMA-LPAIF_RXTX-RX-0";
+		break;
+	case TX_CODEC_DMA_TX_0:
+		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-0";
+		break;
+	case TX_CODEC_DMA_TX_3:
+		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-3";
+		break;
+	case PRIMARY_MI2S_RX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-RX-PRIMARY";
+		else
+			*link_name = "MI2S-LPAIF-RX-PRIMARY";
+		break;
+	case PRIMARY_MI2S_TX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-TX-PRIMARY";
+		else
+			*link_name = "MI2S-LPAIF-TX-PRIMARY";
+		break;
+	case SECONDARY_MI2S_RX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-RX-SECONDARY";
+		else
+			*link_name = "MI2S-LPAIF-RX-SECONDARY";
+		break;
+	case SECONDARY_MI2S_TX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-TX-SECONDARY";
+		else
+			*link_name = "MI2S-LPAIF-TX-SECONDARY";
+		break;
+	case TERTIARY_MI2S_RX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-RX-TERTIARY";
+		else
+			*link_name = "MI2S-LPAIF-RX-TERTIARY";
+		break;
+	case TERTIARY_MI2S_TX:
+		if (strstr(*link_name, "HS") != NULL)
+			*link_name = "MI2S-LPAIF_SDR-TX-TERTIARY";
+		else
+			*link_name = "MI2S-LPAIF-TX-TERTIARY";
+		break;
+	default:
+		break;
+	}
+}
+
 int qcs6490_snd_parse_of(struct snd_soc_card *card)
 {
 	struct device_node *np;
@@ -263,6 +323,7 @@ int qcs6490_snd_parse_of(struct snd_soc_card *card)
 			link->nonatomic = 1;
 		}
 
+		audioreach_get_link_name(&link->name, link->id);
 		link->stream_name = link->name;
 		link++;
 
