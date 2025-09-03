@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+// Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #ifndef __Q6PRM_AUDIOREACH_H__
 #define __Q6PRM_AUDIOREACH_H__

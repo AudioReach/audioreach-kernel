@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2021, Linaro Limited
+// Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/slab.h>
 #include <linux/wait.h>
