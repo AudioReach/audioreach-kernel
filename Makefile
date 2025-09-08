@@ -1,23 +1,20 @@
-AUDIO_ROOT=$(PWD)
+#Top-level Makefile for AudioReach kernel modules
 
-obj-m := ipc/audio-pkt.o
-obj-m += dsp/spf-core.o
-obj-m += dsp/msm_audio_mem.o
+SUBDIRS := audioreach-driver
 
-EXTRA_CFLAGS += -I$(AUDIO_ROOT)/include
+.PHONY: all clean modules_install
 
 all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules
+	@for dir in $(SUBDIRS); do \
+		$(MAKE) -C $$dir all; \
+	done
 
 modules_install:
-	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(shell pwd) modules_install
+	@for dir in $(SUBDIRS); do \
+		$(MAKE) -C $$dir modules_install; \
+	done
 
 clean:
-	find ./ -iname "*.o" -delete
-	find ./ -iname "*.ko" -delete
-	find ./ -iname "*.mod.c" -delete
-	find ./ -iname "*.mod.o" -delete
-	find ./ -iname "*~" -delete
-	find ./ -iname ".*.cmd" -delete
-	rm -f Module.symvers
-	rm -rf .tmp_versions
+	@for dir in $(SUBDIRS); do \
+		$(MAKE) -C $$dir clean; \
+	done
