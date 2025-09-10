@@ -1,20 +1,13 @@
-#Top-level Makefile for AudioReach kernel modules
-
+# A list of subdirectories containing Kbuild Makefiles
 SUBDIRS := audioreach-driver
 
-.PHONY: all clean modules_install
+# Define common targets using the special automatic variable $@
+all modules clean modules_install:
+	for dir in $(SUBDIRS); do \
+        echo "Executing '$@' in $$dir..."; \
+        $(MAKE) -C $(KERNEL_SRC) M=$(CURDIR)/$$dir $@; \
+    done
 
-all:
-	@for dir in $(SUBDIRS); do \
-		$(MAKE) -C $$dir all; \
-	done
-
-modules_install:
-	@for dir in $(SUBDIRS); do \
-		$(MAKE) -C $$dir modules_install; \
-	done
-
-clean:
-	@for dir in $(SUBDIRS); do \
-		$(MAKE) -C $$dir clean; \
-	done
+# The 'modules' target is the default one, so when you run 'make'
+# it will build the modules.
+.PHONY: all modules clean modules_install

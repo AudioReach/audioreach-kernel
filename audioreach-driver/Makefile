@@ -7,21 +7,5 @@ audioreach_driver-objs := \
     q6prm_audioreach_clock.o \
     q6prm_audioreach.o \
     audioreach_common.o
+
 ccflags-y += -I$(KERNEL_SRC)/sound/soc/qcom/qdsp6 -I$(KERNEL_SRC)/sound/soc/qcom
-
-
-all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) modules
-
-modules_install:
-	    $(MAKE) -C $(KERNEL_SRC) M=$(PWD) INSTALL_MOD_PATH=$(DESTDIR) modules_install
-
-clean:
-	@if [ -n "$(KERNEL_SRC)" ]; then \
-		$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) clean; \
-	elif [ -n "$(KERNELDIR)" ]; then \
-		$(MAKE) -C $(KERNELDIR) M=$(shell pwd) clean; \
-	else \
-		rm -f *.o *.ko *.mod.c *.order *.symvers; \
-	fi
-
