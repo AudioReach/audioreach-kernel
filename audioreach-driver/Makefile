@@ -8,4 +8,4 @@ audioreach_driver-objs := \
     q6prm_audioreach.o \
     audioreach_common.o
 
-ccflags-y += -I$(KERNEL_SRC)/sound/soc/qcom/qdsp6 -I$(KERNEL_SRC)/sound/soc/qcom
+ccflags-y += -I$(KERNEL_SRC)/sound/soc/qcom/qdsp6 -I$(KERNEL_SRC)/sound/soc/qcom -I$(src)/../include/uapi

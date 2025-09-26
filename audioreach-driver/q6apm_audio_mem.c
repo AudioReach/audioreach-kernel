@@ -26,14 +26,9 @@
 #include <dt-bindings/firmware/qcom,scm.h>
 #include <sound/soc.h>
 #include "q6prm_audioreach.h"
+#include <linux/msm_audio.h>
 
 #define DRV_NAME "q6apm-audio-mem"
-
-#define AUDIO_IOCTL_MAGIC 'a'
-#define IOCTL_MAP_PHYS_ADDR _IOW(AUDIO_IOCTL_MAGIC, 97, int)
-#define IOCTL_UNMAP_PHYS_ADDR _IOW(AUDIO_IOCTL_MAGIC, 98, int)
-#define IOCTL_MAP_HYP_ASSIGN _IOW(AUDIO_IOCTL_MAGIC, 99, int)
-#define IOCTL_UNMAP_HYP_ASSIGN _IOW(AUDIO_IOCTL_MAGIC, 100, int)
 
 #define MSM_AUDIO_MEM_PROBED (1 << 0)
 
