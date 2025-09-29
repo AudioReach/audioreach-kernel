@@ -51,7 +51,7 @@ struct prm_cmd_release_rsc {
 	struct audio_hw_clk_rel_cfg clock_id;
 } __packed;
 
-int q6prm_audio_send_cmd_sync(struct device *dev, gpr_device_t *gdev,
+static int q6prm_audio_send_cmd_sync(struct device *dev, gpr_device_t *gdev,
 			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
 			     gpr_port_t *port, wait_queue_head_t *cmd_wait,
 			     struct gpr_pkt *pkt, uint32_t rsp_opcode)
@@ -139,7 +139,7 @@ static void *__q6prm_audioreach_alloc_pkt(int payload_size, uint32_t opcode, uin
 	return pkt;
 }
 
-void *q6prm_audioreach_alloc_cmd_pkt(int payload_size, uint32_t opcode, uint32_t token,
+static void *q6prm_audioreach_alloc_cmd_pkt(int payload_size, uint32_t opcode, uint32_t token,
 			       uint32_t src_port, uint32_t dest_port)
 {
 	return __q6prm_audioreach_alloc_pkt(payload_size, opcode, token, src_port, dest_port, true);

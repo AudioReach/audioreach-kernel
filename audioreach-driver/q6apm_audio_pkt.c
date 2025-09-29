@@ -179,7 +179,7 @@ static int fifo_pop(struct port_backup *backup)
 	return 0;
 }
 
-int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
+static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
 			     gpr_port_t *port, wait_queue_head_t *cmd_wait,
 			     struct gpr_pkt *pkt, uint32_t rsp_opcode)
@@ -228,7 +228,7 @@ err:
 }
 
 
-int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
+static int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
 {
 	gpr_device_t *gdev = apm->adev;
 
@@ -273,7 +273,7 @@ static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t
 	return pkt;
 }
 
-void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
+static void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
 {
 	return __q6apm_audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
 				       APM_MODULE_INSTANCE_ID, true);
@@ -302,7 +302,7 @@ bool q6apm_audio_is_adsp_ready(void)
 	return false;
 }
 
-void q6apm_audio_close_all(void)
+static void q6apm_audio_close_all(void)
 {
 	struct gpr_pkt *pkt;
 
@@ -315,7 +315,7 @@ void q6apm_audio_close_all(void)
 	kfree(pkt);
 }
 
-int audio_pkt_open(struct inode *inode, struct file *file)
+static int audio_pkt_open(struct inode *inode, struct file *file)
 {
 	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
@@ -337,7 +337,7 @@ int audio_pkt_open(struct inode *inode, struct file *file)
  * userspace client do a close() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-int audio_pkt_release(struct inode *inode, struct file *file)
+static int audio_pkt_release(struct inode *inode, struct file *file)
 {
 	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
@@ -373,7 +373,7 @@ int audio_pkt_release(struct inode *inode, struct file *file)
  * userspace client do a read() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-ssize_t audio_pkt_read(struct file *file, char __user *buf,
+static ssize_t audio_pkt_read(struct file *file, char __user *buf,
 		       size_t count, loff_t *ppos)
 {
 	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
@@ -421,7 +421,7 @@ ssize_t audio_pkt_read(struct file *file, char __user *buf,
  * audpkt_update_physical_addr - Update physical address
  * audpkt_hdr:	Pointer to the file structure.
  */
-int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
+static int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
 {
 	size_t pa_len = 0;
 	dma_addr_t paddr = 0;
@@ -459,7 +459,7 @@ int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
  * userspace client do a write() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-ssize_t audio_pkt_write(struct file *file, const char __user *buf,
+static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 			size_t count, loff_t *ppos)
 {
 	struct q6apm_audio_pkt *audpkt_dev = file->private_data;

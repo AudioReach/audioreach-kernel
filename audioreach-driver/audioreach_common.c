@@ -64,7 +64,7 @@ static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 };
 
 
-int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
+static int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
 			   struct snd_soc_jack *dp_jack, int dp_pcm_id)
 {
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
@@ -88,7 +88,7 @@ int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
+static int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 			    struct snd_soc_jack *jack, bool *jack_setup)
 {
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
@@ -142,7 +142,7 @@ int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 }
 
 
-void audioreach_get_link_name(const char **link_name, int dai_id)
+static void audioreach_get_link_name(const char **link_name, int dai_id)
 {
 	switch (dai_id) {
         case WSA_CODEC_DMA_RX_0:
@@ -201,7 +201,7 @@ void audioreach_get_link_name(const char **link_name, int dai_id)
 	}
 }
 
-int qcs6490_snd_parse_of(struct snd_soc_card *card)
+static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 {
 	struct device_node *np;
 	struct device_node *codec = NULL;
