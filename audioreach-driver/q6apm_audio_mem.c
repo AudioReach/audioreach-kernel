@@ -439,7 +439,6 @@ int msm_audio_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len)
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
 	return status;
 }
-EXPORT_SYMBOL_GPL(msm_audio_get_phy_addr);
 
 int msm_audio_set_hyp_assign(int fd, bool assign)
 {
@@ -614,7 +613,6 @@ void msm_audio_mem_crash_handler(void)
 	}
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
 }
-EXPORT_SYMBOL_GPL(msm_audio_mem_crash_handler);
 
 static int msm_audio_mem_open(struct inode *inode, struct file *file)
 {

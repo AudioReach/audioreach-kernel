@@ -227,7 +227,6 @@ err:
 	mutex_unlock(cmd_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(q6apm_send_audio_cmd_sync);
 
 
 int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
@@ -237,7 +236,6 @@ int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint3
 	return q6apm_send_audio_cmd_sync(&gdev->dev, gdev, &apm->result, &apm->lock,
 					NULL, &apm->readq, pkt, rsp_opcode);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_send_cmd);
 
 static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
 				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
@@ -281,7 +279,6 @@ void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t toke
 	return __q6apm_audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
 				       APM_MODULE_INSTANCE_ID, true);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_alloc_apm_cmd_pkt);
 
 static int q6apm_audio_get_apm_state(struct q6apm_audio_pkt *apm)
 {
@@ -305,7 +302,6 @@ bool q6apm_audio_is_adsp_ready(void)
 
 	return false;
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_is_adsp_ready);
 
 void q6apm_audio_close_all(void)
 {
@@ -319,7 +315,6 @@ void q6apm_audio_close_all(void)
 
 	kfree(pkt);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_close_all);
 
 int audio_pkt_open(struct inode *inode, struct file *file)
 {
