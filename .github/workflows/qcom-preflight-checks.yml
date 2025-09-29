@@ -1,0 +1,17 @@
+name: Qualcomm Preflight Checks
+
+on:
+  pull_request_target:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  qcom-preflight-checks:
+    uses: Audioreach/audioreach-workflows/.github/workflows/qcom-preflight-checks.yml@master
+    secrets: inherit
