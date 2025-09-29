@@ -362,17 +362,6 @@ err:
 	return rc;
 }
 
-void msm_audio_fd_list_debug(void)
-{
-	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
-
-	list_for_each_entry(msm_audio_fd_data,
-			&msm_audio_mem_fd_list.fd_list, list) {
-		pr_debug("%s fd %d handle %pK phy. addr %pK\n", __func__,
-			msm_audio_fd_data->fd, msm_audio_fd_data->handle,
-			(void *)msm_audio_fd_data->paddr);
-	}
-}
 
 void msm_audio_update_fd_list(struct msm_audio_fd_data *msm_audio_fd_data)
 {
@@ -803,8 +792,6 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct of_phandle_args iommuspec;
 	bool smmu_enabled = true;
-	const char *msm_audio_mem_dt = "qcom,smmu-enabled";
-        const char *msm_audio_mem_smmu_sid_mask = "qcom,smmu-sid-mask";
 	struct msm_audio_mem_private *msm_audio_mem_data = NULL;
 
 	if (dev->of_node == NULL) {

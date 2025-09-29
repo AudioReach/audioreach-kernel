@@ -33,7 +33,6 @@
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
 
-static bool audio_pkt_probed;
 /* Define Logging Macros */
 static int audio_pkt_debug_mask;
 enum {
@@ -641,7 +640,6 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 {
 	gpr_device_t *gdev = priv;
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
-	struct device *dev = &gdev->dev;
 	struct gpr_ibasic_rsp_result_t *result;
 	struct gpr_hdr *hdr = &data->hdr;
 	uint8_t *pkt = NULL;
