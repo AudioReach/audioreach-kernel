@@ -51,7 +51,7 @@ struct prm_cmd_release_rsc {
 	struct audio_hw_clk_rel_cfg clock_id;
 } __packed;
 
-int q6prm_audio_send_cmd_sync(struct device *dev, gpr_device_t *gdev,
+static int q6prm_audio_send_cmd_sync(struct device *dev, gpr_device_t *gdev,
 			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
 			     gpr_port_t *port, wait_queue_head_t *cmd_wait,
 			     struct gpr_pkt *pkt, uint32_t rsp_opcode)
@@ -95,7 +95,6 @@ err:
 	mutex_unlock(cmd_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(q6prm_audio_send_cmd_sync);
 
 static int q6prm_audioreach_send_cmd_sync(struct q6prm *prm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
 {
@@ -140,12 +139,11 @@ static void *__q6prm_audioreach_alloc_pkt(int payload_size, uint32_t opcode, uin
 	return pkt;
 }
 
-void *q6prm_audioreach_alloc_cmd_pkt(int payload_size, uint32_t opcode, uint32_t token,
+static void *q6prm_audioreach_alloc_cmd_pkt(int payload_size, uint32_t opcode, uint32_t token,
 			       uint32_t src_port, uint32_t dest_port)
 {
 	return __q6prm_audioreach_alloc_pkt(payload_size, opcode, token, src_port, dest_port, true);
 }
-EXPORT_SYMBOL_GPL(q6prm_audioreach_alloc_cmd_pkt);
 
 static int q6prm_audioreach_set_hw_core_req(struct device *dev, uint32_t hw_block_id, bool enable)
 {
@@ -193,13 +191,11 @@ int q6prm_audioreach_vote_lpass_core_hw(struct device *dev, uint32_t hw_block_id
 	return q6prm_audioreach_set_hw_core_req(dev, hw_block_id, true);
 
 }
-EXPORT_SYMBOL_GPL(q6prm_audioreach_vote_lpass_core_hw);
 
 int q6prm_audioreach_unvote_lpass_core_hw(struct device *dev, uint32_t hw_block_id, uint32_t client_handle)
 {
 	return q6prm_audioreach_set_hw_core_req(dev, hw_block_id, false);
 }
-EXPORT_SYMBOL_GPL(q6prm_audioreach_unvote_lpass_core_hw);
 
 static int q6prm_audioreach_request_lpass_clock(struct device *dev, int clk_id, int clk_attr, int clk_root,
 				     unsigned int freq)
@@ -280,7 +276,6 @@ int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_att
 
 	return q6prm_audioreach_release_lpass_clock(dev, clk_id, clk_attr, clk_root, freq);
 }
-EXPORT_SYMBOL_GPL(q6prm_audioreach_set_lpass_clock);
 
 static int prm_audioreach_callback(struct gpr_resp_pkt *data, void *priv, int op)
 {
