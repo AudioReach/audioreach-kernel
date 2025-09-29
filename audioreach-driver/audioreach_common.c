@@ -12,7 +12,7 @@
 #include <sound/jack.h>
 #include <linux/input-event-codes.h>
 #include <sound/simple_card_utils.h>
-#include "qdsp6/q6afe.h"
+#include "q6afe.h"
 #include "sdw.h"
 #include "q6prm_audioreach.h"
 
