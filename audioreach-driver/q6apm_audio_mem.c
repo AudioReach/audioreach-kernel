@@ -362,19 +362,7 @@ err:
 	return rc;
 }
 
-void msm_audio_fd_list_debug(void)
-{
-	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
-
-	list_for_each_entry(msm_audio_fd_data,
-			&msm_audio_mem_fd_list.fd_list, list) {
-		pr_debug("%s fd %d handle %pK phy. addr %pK\n", __func__,
-			msm_audio_fd_data->fd, msm_audio_fd_data->handle,
-			(void *)msm_audio_fd_data->paddr);
-	}
-}
-
-void msm_audio_update_fd_list(struct msm_audio_fd_data *msm_audio_fd_data)
+static void msm_audio_update_fd_list(struct msm_audio_fd_data *msm_audio_fd_data)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data1 = NULL;
 
@@ -392,7 +380,7 @@ void msm_audio_update_fd_list(struct msm_audio_fd_data *msm_audio_fd_data)
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
 }
 
-void msm_audio_delete_fd_entry(void *handle)
+static void msm_audio_delete_fd_entry(void *handle)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
 	struct list_head *ptr, *next;
@@ -441,7 +429,7 @@ int msm_audio_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len)
 }
 EXPORT_SYMBOL_GPL(msm_audio_get_phy_addr);
 
-int msm_audio_set_hyp_assign(int fd, bool assign)
+static int msm_audio_set_hyp_assign(int fd, bool assign)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
 	int status = -EINVAL;
@@ -461,7 +449,7 @@ int msm_audio_set_hyp_assign(int fd, bool assign)
 	return status;
 }
 
-void msm_audio_get_handle(int fd, void **handle)
+static void msm_audio_get_handle(int fd, void **handle)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
 
@@ -805,8 +793,6 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct of_phandle_args iommuspec;
 	bool smmu_enabled = true;
-	const char *msm_audio_mem_dt = "qcom,smmu-enabled";
-        const char *msm_audio_mem_smmu_sid_mask = "qcom,smmu-sid-mask";
 	struct msm_audio_mem_private *msm_audio_mem_data = NULL;
 
 	if (dev->of_node == NULL) {
