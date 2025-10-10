@@ -28,7 +28,7 @@ jobs:
         run: echo "Repository name ${{ github.repository }}"
 
       - name: Run copyright/license detector
-        uses: qualcomm/copyright-license-checker-action@audioreach
+        uses: targoy-qti/copyright-license-checker-action@audioreach
         with:
           patch_file: pr.patch
           repo_name: ${{ github.repository }}
