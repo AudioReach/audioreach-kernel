@@ -2,6 +2,8 @@
 // Copyright (c) 2021, Linaro Limited
 // Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 
+// Added dummy change here.
+
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
