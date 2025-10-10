@@ -12,10 +12,9 @@
 #include <sound/jack.h>
 #include <linux/input-event-codes.h>
 #include <sound/simple_card_utils.h>
-#include "qdsp6/q6afe.h"
-#include "sdw.h"
 #include "q6prm_audioreach.h"
 
+#define AFE_PORT_MAX   137
 #define NAME_SIZE	32
 
 struct qcs6490_snd_data {
@@ -50,7 +49,6 @@ static const struct snd_soc_dapm_widget qcom_jack_snd_widgets[] = {
 	SND_SOC_DAPM_SPK("DP7 Jack", NULL),
 };
 
-
 static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 	/* Headset */
 	{
@@ -63,9 +61,9 @@ static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 	},
 };
 
-
-int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
-			   struct snd_soc_jack *dp_jack, int dp_pcm_id)
+static int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
+				     struct snd_soc_jack *dp_jack,
+				     int dp_pcm_id)
 {
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	struct snd_soc_card *card = rtd->card;
@@ -88,8 +86,9 @@ int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
-			    struct snd_soc_jack *jack, bool *jack_setup)
+static int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
+				      struct snd_soc_jack *jack,
+				      bool *jack_setup)
 {
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
@@ -142,7 +141,7 @@ int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 }
 
 
-void audioreach_get_link_name(const char **link_name, int dai_id)
+static void audioreach_get_link_name(const char **link_name, int dai_id)
 {
 	switch (dai_id) {
         case WSA_CODEC_DMA_RX_0:
@@ -201,7 +200,7 @@ void audioreach_get_link_name(const char **link_name, int dai_id)
 	}
 }
 
-int qcs6490_snd_parse_of(struct snd_soc_card *card)
+static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 {
 	struct device_node *np;
 	struct device_node *codec = NULL;
@@ -388,6 +387,64 @@ static int qcs6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 	return qcs6490_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
 }
 
+static int qcs6490_snd_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	u32 rx_ch[SDW_MAX_PORTS], tx_ch[SDW_MAX_PORTS];
+	struct sdw_stream_runtime *sruntime;
+	struct snd_soc_dai *codec_dai;
+	u32 rx_ch_cnt = 0, tx_ch_cnt = 0;
+	int ret, i, j;
+
+	sruntime = sdw_alloc_stream(cpu_dai->name, SDW_STREAM_PCM);
+	if (!sruntime)
+		return -ENOMEM;
+
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+		ret = snd_soc_dai_set_stream(codec_dai, sruntime,
+					     substream->stream);
+		if (ret < 0 && ret != -ENOTSUPP) {
+			dev_err(rtd->dev, "Failed to set sdw stream on %s\n", codec_dai->name);
+			goto err_set_stream;
+		} else if (ret == -ENOTSUPP) {
+			/* Ignore unsupported */
+			continue;
+		}
+
+		ret = snd_soc_dai_get_channel_map(codec_dai, &tx_ch_cnt, tx_ch,
+						  &rx_ch_cnt, rx_ch);
+		if (ret != 0 && ret != -ENOTSUPP) {
+			dev_err(rtd->dev, "Failed to get codec chan map %s\n", codec_dai->name);
+			goto err_set_stream;
+		} else if (ret == -ENOTSUPP) {
+			/* Ignore unsupported */
+			continue;
+		}
+	}
+
+	switch (cpu_dai->id) {
+	case RX_CODEC_DMA_RX_0:
+	case TX_CODEC_DMA_TX_3:
+		if (tx_ch_cnt || rx_ch_cnt) {
+			for_each_rtd_codec_dais(rtd, j, codec_dai) {
+				ret = snd_soc_dai_set_channel_map(codec_dai,
+								  tx_ch_cnt, tx_ch,
+								  rx_ch_cnt, rx_ch);
+				if (ret != 0 && ret != -ENOTSUPP)
+					goto err_set_stream;
+			}
+		}
+	}
+
+	return 0;
+
+err_set_stream:
+	sdw_release_stream(sruntime);
+
+	return ret;
+}
+
 static void qcs6490_snd_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
@@ -400,7 +457,7 @@ static void qcs6490_snd_shutdown(struct snd_pcm_substream *substream)
 }
 
 static int qcs6490_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				     struct snd_pcm_hw_params *params)
+				      struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_interval *rate = hw_param_interval(params,
@@ -427,13 +484,32 @@ static int qcs6490_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 }
 
 static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
-				struct snd_pcm_hw_params *params)
+				 struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct qcs6490_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
+	struct sdw_stream_runtime *sruntime;
+	int i;
 
-	return qcom_snd_sdw_hw_params(substream, params, &pdata->sruntime[cpu_dai->id]);
+	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_RX_0:
+	case RX_CODEC_DMA_RX_0:
+	case RX_CODEC_DMA_RX_1:
+	case TX_CODEC_DMA_TX_0:
+	case TX_CODEC_DMA_TX_1:
+	case TX_CODEC_DMA_TX_2:
+	case TX_CODEC_DMA_TX_3:
+		for_each_rtd_codec_dais(rtd, i, codec_dai) {
+			sruntime = snd_soc_dai_get_stream(codec_dai, substream->stream);
+			if (sruntime != ERR_PTR(-ENOTSUPP))
+				pdata->sruntime[cpu_dai->id] = sruntime;
+		}
+		break;
+	}
+
+	return 0;
 }
 
 static int qcs6490_snd_prepare(struct snd_pcm_substream *substream)
@@ -442,9 +518,49 @@ static int qcs6490_snd_prepare(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct qcs6490_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
 	struct sdw_stream_runtime *sruntime = data->sruntime[cpu_dai->id];
+	bool *stream_prepared = &data->stream_prepared[cpu_dai->id];
+	int ret;
 
-	return qcom_snd_sdw_prepare(substream, sruntime,
-				    &data->stream_prepared[cpu_dai->id]);
+	if (!sruntime)
+		return 0;
+
+	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_RX_1:
+	case RX_CODEC_DMA_RX_0:
+	case RX_CODEC_DMA_RX_1:
+	case TX_CODEC_DMA_TX_0:
+	case TX_CODEC_DMA_TX_1:
+	case TX_CODEC_DMA_TX_2:
+	case TX_CODEC_DMA_TX_3:
+		break;
+	default:
+		return 0;
+	}
+
+	if (*stream_prepared)
+		return 0;
+
+	ret = sdw_prepare_stream(sruntime);
+	if (ret)
+		return ret;
+
+	/**
+	 * NOTE: there is a strict hw requirement about the ordering of port
+	 * enables and actual WSA881x PA enable. PA enable should only happen
+	 * after soundwire ports are enabled if not DC on the line is
+	 * accumulated resulting in Click/Pop Noise
+	 * PA enable/mute are handled as part of codec DAPM and digital mute.
+	 */
+
+	ret = sdw_enable_stream(sruntime);
+	if (ret) {
+		sdw_deprepare_stream(sruntime);
+		return ret;
+	}
+	*stream_prepared  = true;
+
+	return ret;
 }
 
 static int qcs6490_snd_hw_free(struct snd_pcm_substream *substream)
@@ -453,13 +569,32 @@ static int qcs6490_snd_hw_free(struct snd_pcm_substream *substream)
 	struct qcs6490_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct sdw_stream_runtime *sruntime = data->sruntime[cpu_dai->id];
+	bool *stream_prepared = &data->stream_prepared[cpu_dai->id];
 
-	return qcom_snd_sdw_hw_free(substream, sruntime,
-				    &data->stream_prepared[cpu_dai->id]);
+	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_RX_1:
+	case RX_CODEC_DMA_RX_0:
+	case RX_CODEC_DMA_RX_1:
+	case TX_CODEC_DMA_TX_0:
+	case TX_CODEC_DMA_TX_1:
+	case TX_CODEC_DMA_TX_2:
+	case TX_CODEC_DMA_TX_3:
+		if (sruntime && *stream_prepared) {
+			sdw_disable_stream(sruntime);
+			sdw_deprepare_stream(sruntime);
+			*stream_prepared = false;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return 0;
 }
 
 static const struct snd_soc_ops qcs6490_be_ops = {
-	.startup = qcom_snd_sdw_startup,
+	.startup = qcs6490_snd_startup,
 	.shutdown = qcs6490_snd_shutdown,
 	.hw_params = qcs6490_snd_hw_params,
 	.hw_free = qcs6490_snd_hw_free,
@@ -527,6 +662,7 @@ static struct platform_driver snd_qcs6490_driver = {
 		.of_match_table = snd_qcs6490_dt_match,
 	},
 };
+
 int snd_qcs6490_init(void)
 {
 	    return platform_driver_register(&snd_qcs6490_driver);
@@ -536,6 +672,7 @@ void snd_qcs6490_exit(void)
 {
 	    platform_driver_unregister(&snd_qcs6490_driver);
 }
+
 static int __init audio_reach_driver_init(void)
 {
     int ret;
@@ -592,7 +729,5 @@ static void __exit audio_reach_driver_exit(void)
 module_init(audio_reach_driver_init);
 module_exit(audio_reach_driver_exit);
 
-
-//module_platform_driver(snd_qcs6490_driver);
 MODULE_DESCRIPTION("QCS6490 ASoC Machine Driver");
 MODULE_LICENSE("GPL");

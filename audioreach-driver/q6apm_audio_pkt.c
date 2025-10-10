@@ -26,14 +26,16 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
-#include "audioreach.h"
-#include "q6apm.h"
 #include "q6prm_audioreach.h"
 
+#define APM_MODULE_INSTANCE_ID			0x00000001
+#define APM_CMD_CLOSE_ALL			0x01001013
+#define APM_CMD_GET_SPF_STATE			0x01001021
+#define APM_CMD_RSP_GET_SPF_STATE		0x02001007
+#define APM_CMD_CLOSE_ALL			0x01001013
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
 
-static bool audio_pkt_probed;
 /* Define Logging Macros */
 static int audio_pkt_debug_mask;
 enum {
@@ -103,6 +105,15 @@ struct audio_gpr_pkt {
 	struct gpr_hdr audpkt_hdr;
 	struct audio_pkt_apm_mem_map audpkt_mem_map;
 };
+
+struct apm_cmd_header {
+	uint32_t payload_address_lsw;
+	uint32_t payload_address_msw;
+	uint32_t mem_map_handle;
+	uint32_t payload_size;
+} __packed;
+
+#define APM_CMD_HDR_SIZE sizeof(struct apm_cmd_header)
 
 typedef void (*audio_pkt_clnt_cb_fn)(void *buf, int len, void *priv);
 
@@ -180,12 +191,12 @@ static int fifo_pop(struct port_backup *backup)
 	return 0;
 }
 
-int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
-			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
-			     gpr_port_t *port, wait_queue_head_t *cmd_wait,
-			     struct gpr_pkt *pkt, uint32_t rsp_opcode)
+static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
+				     struct gpr_ibasic_rsp_result_t *result,
+				     struct mutex *cmd_lock, gpr_port_t *port,
+				     wait_queue_head_t *cmd_wait,
+				     struct gpr_pkt *pkt, uint32_t rsp_opcode)
 {
-
 	struct gpr_hdr *hdr = &pkt->hdr;
 	int rc, wait_time = 2;
 
@@ -227,17 +238,15 @@ err:
 	mutex_unlock(cmd_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(q6apm_send_audio_cmd_sync);
 
-
-int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
+static int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt,
+				uint32_t rsp_opcode)
 {
 	gpr_device_t *gdev = apm->adev;
 
 	return q6apm_send_audio_cmd_sync(&gdev->dev, gdev, &apm->result, &apm->lock,
 					NULL, &apm->readq, pkt, rsp_opcode);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_send_cmd);
 
 static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
 				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
@@ -276,12 +285,11 @@ static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t
 	return pkt;
 }
 
-void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
+static void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
 {
 	return __q6apm_audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
 				       APM_MODULE_INSTANCE_ID, true);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_alloc_apm_cmd_pkt);
 
 static int q6apm_audio_get_apm_state(struct q6apm_audio_pkt *apm)
 {
@@ -307,7 +315,7 @@ bool q6apm_audio_is_adsp_ready(void)
 }
 EXPORT_SYMBOL_GPL(q6apm_audio_is_adsp_ready);
 
-void q6apm_audio_close_all(void)
+static void q6apm_audio_close_all(void)
 {
 	struct gpr_pkt *pkt;
 
@@ -319,14 +327,11 @@ void q6apm_audio_close_all(void)
 
 	kfree(pkt);
 }
-EXPORT_SYMBOL_GPL(q6apm_audio_close_all);
 
-int audio_pkt_open(struct inode *inode, struct file *file)
+static int audio_pkt_open(struct inode *inode, struct file *file)
 {
 	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
-
-	AUDIO_PKT_ERR("for %s\n", audpkt_dev->ch_name);
 
 	get_device(dev);
 	file->private_data = audpkt_dev;
@@ -343,7 +348,7 @@ int audio_pkt_open(struct inode *inode, struct file *file)
  * userspace client do a close() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-int audio_pkt_release(struct inode *inode, struct file *file)
+static int audio_pkt_release(struct inode *inode, struct file *file)
 {
 	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
@@ -379,8 +384,8 @@ int audio_pkt_release(struct inode *inode, struct file *file)
  * userspace client do a read() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-ssize_t audio_pkt_read(struct file *file, char __user *buf,
-		       size_t count, loff_t *ppos)
+static ssize_t audio_pkt_read(struct file *file, char __user *buf,
+			      size_t count, loff_t *ppos)
 {
 	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
 	unsigned long flags;
@@ -427,7 +432,7 @@ ssize_t audio_pkt_read(struct file *file, char __user *buf,
  * audpkt_update_physical_addr - Update physical address
  * audpkt_hdr:	Pointer to the file structure.
  */
-int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
+static int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
 {
 	size_t pa_len = 0;
 	dma_addr_t paddr = 0;
@@ -465,7 +470,7 @@ int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
  * userspace client do a write() system call. All input arguments are
  * validated by the virtual file system before calling this function.
  */
-ssize_t audio_pkt_write(struct file *file, const char __user *buf,
+static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 			size_t count, loff_t *ppos)
 {
 	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
@@ -646,9 +651,9 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 {
 	gpr_device_t *gdev = priv;
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
-	struct device *dev = &gdev->dev;
 	struct gpr_ibasic_rsp_result_t *result;
 	struct gpr_hdr *hdr = &data->hdr;
+	struct device *dev = &gdev->dev;
 	uint8_t *pkt = NULL;
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
@@ -663,7 +668,7 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 
 	ret = fifo_pop(&backup);
 	if (ret < 0)
-		AUDIO_PKT_ERR("Failed to pop backup ports from FIFO\n");
+		dev_dbg(dev, "Failed to pop backup ports from FIFO\n");
 
 	hdr->dest_port = backup.src_port;
 	hdr->src_port = backup.dest_port;

@@ -5,7 +5,6 @@
 #define __Q6PRM_AUDIOREACH_H__
 
 #include <linux/dma-mapping.h>
-#include "q6prm.h"
 
 int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_attr,
 			  int clk_root, unsigned int freq);
