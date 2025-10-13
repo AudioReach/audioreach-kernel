@@ -1,0 +1,10 @@
+.*.cmd
+.*.d
+
+*.o
+Module.symvers
+modules.order
+
+audioreach_driver.ko
+audioreach_driver.mod
+audioreach_driver.mod.c

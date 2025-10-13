@@ -20,6 +20,8 @@
 #include "q6prm.h"
 #include "q6dsp-lpass-clocks.h"
 
+#include "q6prm_audioreach.h"
+
 #define AUDIOREACH_BE_PCM_BASE	16
 
 struct q6apm_lpass_dai_data {
