@@ -26,10 +26,14 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
-#include "audioreach.h"
-#include "q6apm.h"
+#include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 
+#define APM_MODULE_INSTANCE_ID			0x00000001
+#define APM_CMD_CLOSE_ALL			0x01001013
+#define APM_CMD_GET_SPF_STATE			0x01001021
+#define APM_CMD_RSP_GET_SPF_STATE		0x02001007
+#define APM_CMD_CLOSE_ALL			0x01001013
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
 
@@ -596,13 +600,13 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
 	struct gpr_ibasic_rsp_result_t *result;
 	struct gpr_hdr *hdr = &data->hdr;
+	struct device *dev = &gdev->dev;
 	uint8_t *pkt = NULL;
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
 	struct sk_buff *skb;
 	int ret;
 	struct gpr_port_map *audpkt_port_map;
-
 
         hdr_size = hdr->hdr_size * 4;
         pkt_size = hdr->pkt_size;
@@ -616,7 +620,7 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 		idr_remove(&apm->audpkt_port_idr, hdr->token);
 		kfree(audpkt_port_map);
 	} else {
-		AUDIO_PKT_ERR("Token=%u not found\n", hdr->token);
+		dev_dbg(dev, "Token=%u not found\n", hdr->token);
 	}
 	mutex_unlock(&apm->audpkt_port_lock);
 
