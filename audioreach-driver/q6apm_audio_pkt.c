@@ -78,6 +78,9 @@ struct q6apm_audio_pkt {
 	char ch_name[20];
 	dev_t audio_pkt_major;
 	struct class *audio_pkt_class;
+
+	struct mutex audpkt_port_lock;
+	struct idr audpkt_port_idr;
 };
 
 struct audio_pkt_apm_cmd_shared_mem_map_regions_t {
@@ -110,74 +113,15 @@ struct audio_pkt_clnt_ch {
 	audio_pkt_clnt_cb_fn func;
 };
 
-
-#define MAX_PKT_BACKUP 128
-
-struct port_backup {
-	uint32_t src_port;
-	uint32_t dest_port;
-};
-
-struct port_backup_fifo {
-	struct port_backup entries[MAX_PKT_BACKUP];
-	int head;
-	int tail;
-	spinlock_t lock;
-};
-
-static struct port_backup_fifo port_fifo = {
-	.head = 0,
-	.tail = 0,
-	.lock = __SPIN_LOCK_UNLOCKED(port_fifo.lock),
+struct gpr_port_map {
+	u32 src_port;
+	u32 dst_port;
 };
 
 #define dev_to_audpkt_dev(_dev) container_of(_dev, struct q6apm_audio_pkt, dev)
 #define cdev_to_audpkt_dev(_cdev) container_of(_cdev, struct q6apm_audio_pkt, cdev)
 
 static struct q6apm_audio_pkt *g_apm;
-
-static bool fifo_is_full(void) {
-	return ((port_fifo.tail + 1) % MAX_PKT_BACKUP) == port_fifo.head;
-}
-
-static bool fifo_is_empty(void) {
-	return port_fifo.head == port_fifo.tail;
-}
-
-static int fifo_push(uint32_t src_port, uint32_t dest_port)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&port_fifo.lock, flags);
-	if (fifo_is_full()) {
-		spin_unlock_irqrestore(&port_fifo.lock, flags);
-		return -ENOMEM;
-	}
-
-	port_fifo.entries[port_fifo.tail].src_port = src_port;
-	port_fifo.entries[port_fifo.tail].dest_port = dest_port;
-	port_fifo.tail = (port_fifo.tail + 1) % MAX_PKT_BACKUP;
-	spin_unlock_irqrestore(&port_fifo.lock, flags);
-
-	return 0;
-}
-
-static int fifo_pop(struct port_backup *backup)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&port_fifo.lock, flags);
-	if (fifo_is_empty()) {
-		spin_unlock_irqrestore(&port_fifo.lock, flags);
-		return -ENOENT;
-	}
-
-	*backup = port_fifo.entries[port_fifo.head];
-	port_fifo.head = (port_fifo.head + 1) % MAX_PKT_BACKUP;
-	spin_unlock_irqrestore(&port_fifo.lock, flags);
-
-	return 0;
-}
 
 static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
@@ -466,6 +410,7 @@ static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 	struct gpr_hdr *audpkt_hdr = NULL;
 	void *kbuf;
 	int ret;
+	struct gpr_port_map *audpkt_port_map;
 
 	if (!audpkt_dev)  {
 		AUDIO_PKT_ERR("invalid device handle\n");
@@ -485,10 +430,25 @@ static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 		}
 	}
 
-	// Backup original ports
-	ret = fifo_push(audpkt_hdr->src_port, audpkt_hdr->dest_port);
+	audpkt_port_map = kmalloc(sizeof(*audpkt_port_map), GFP_KERNEL);
+	if (!audpkt_port_map) {
+		AUDIO_PKT_ERR("kmalloc FAILED !!\n");
+		goto free_kbuf;
+	}
+
+	audpkt_port_map->src_port = audpkt_hdr->src_port;
+	audpkt_port_map->dst_port = audpkt_hdr->dest_port;
+
+	mutex_lock(&audpkt_dev->audpkt_port_lock);
+	ret = idr_alloc(&audpkt_dev->audpkt_port_idr, audpkt_port_map,
+			audpkt_hdr->token,
+			audpkt_hdr->token + 1,
+			GFP_KERNEL);
+	mutex_unlock(&audpkt_dev->audpkt_port_lock);
+
 	if (ret < 0) {
-		AUDIO_PKT_ERR("FIFO full, cannot backup ports\n");
+		kfree(audpkt_port_map);
+		AUDIO_PKT_ERR("idr_alloc failed for token=%u\n", audpkt_hdr->token);
 		goto free_kbuf;
 	} else {
 		audpkt_hdr->src_port = GPR_APM_MODULE_IID;
@@ -607,6 +567,9 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 	skb_queue_head_init(&apm->queue);
 	init_waitqueue_head(&apm->readq);
 
+	mutex_init(&apm->audpkt_port_lock);
+	idr_init(&apm->audpkt_port_idr);
+
 	g_apm = apm;
 
 	cdev_init(&apm->cdev, &audio_pkt_fops);
@@ -646,20 +609,25 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
 	struct sk_buff *skb;
-	struct port_backup backup;
 	int ret;
+	struct gpr_port_map *audpkt_port_map;
 
 
         hdr_size = hdr->hdr_size * 4;
         pkt_size = hdr->pkt_size;
 
+	mutex_lock(&apm->audpkt_port_lock);
+	audpkt_port_map = idr_find(&apm->audpkt_port_idr, hdr->token);
+	if (audpkt_port_map) {
+		hdr->dest_port = audpkt_port_map->src_port;
+		hdr->src_port = audpkt_port_map->dst_port;
 
-	ret = fifo_pop(&backup);
-	if (ret < 0)
-		AUDIO_PKT_ERR("Failed to pop backup ports from FIFO\n");
-
-	hdr->dest_port = backup.src_port;
-	hdr->src_port = backup.dest_port;
+		idr_remove(&apm->audpkt_port_idr, hdr->token);
+		kfree(audpkt_port_map);
+	} else {
+		AUDIO_PKT_ERR("Token=%u not found\n", hdr->token);
+	}
+	mutex_unlock(&apm->audpkt_port_lock);
 
         pkt = kmalloc(pkt_size, GFP_KERNEL);
         if (!pkt)
