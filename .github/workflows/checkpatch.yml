@@ -17,7 +17,7 @@ jobs:
       - name: Install Perl
         run: sudo apt-get update && sudo apt-get install -y perl
 
-      # If your repo has scripts/checkpatch.pl, we use it; else download a stable version from upstream.
+      # download a stable version from upstream.
       - name: Resolve checkpatch.pl
         id: resolve
         shell: bash
