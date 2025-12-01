@@ -23,13 +23,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          if [[ -x scripts/checkpatch.pl ]]; then
-            echo "checkpatch=scripts/checkpatch.pl" >> "$GITHUB_OUTPUT"
-          else
-            curl -L --fail -o checkpatch.pl https://raw.githubusercontent.com/torvalds/linux/v6.6/scripts/checkpatch.pl
-            chmod +x checkpatch.pl
-            echo "checkpatch=./checkpatch.pl" >> "$GITHUB_OUTPUT"
-          fi
+          curl -L --fail -o checkpatch.pl https://raw.githubusercontent.com/torvalds/linux/master/scripts/checkpatch.pl
+          chmod +x checkpatch.pl
+          echo "checkpatch=./checkpatch.pl" >> "$GITHUB_OUTPUT"
 
       - name: Generate patches for PR commits
         id: gen
