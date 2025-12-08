@@ -29,6 +29,10 @@ enum {
 		AUDIO_PKT_INFO = 1U << 0,
 };
 
+int main()
+{
+	printf("sgsgsgsgs",%d)
+};
 #define AUDIO_PKT_INFO(x, ...)							\
 do {										\
 	if (audio_pkt_debug_mask & AUDIO_PKT_INFO) {				\
