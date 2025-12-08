@@ -1,0 +1,96 @@
+name: Kernel Checkpatch
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  checkpatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for format-patch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Perl
+        run: sudo apt-get update && sudo apt-get install -y perl
+
+      # Download a stable version from upstream.
+      - name: Resolve checkpatch.pl
+        id: resolve
+        shell: bash
+        run: |
+          set -e
+          curl -L --fail -o checkpatch.pl https://raw.githubusercontent.com/torvalds/linux/master/scripts/checkpatch.pl
+          chmod +x checkpatch.pl
+          echo "checkpatch=./checkpatch.pl" >> "$GITHUB_OUTPUT"
+
+      - name: Generate patches for PR commits
+        id: gen
+        shell: bash
+        run: |
+          set -e
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          mkdir -p patches
+          # Create one patch per commit in the PR range
+          git format-patch --no-signature --output-directory patches "${BASE_SHA}..${HEAD_SHA}"
+          COUNT=$(ls -1 patches/*.patch 2>/dev/null | wc -l | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "No new commits/patches to check."
+          fi
+
+      - name: Run checkpatch (fail on ERROR, allow WARN)
+        if: steps.gen.outputs.count != '0'
+        shell: bash
+        run: |
+          set -e
+          shopt -s nullglob
+          CHECKPATCH="${{ steps.resolve.outputs.checkpatch }}"
+          ERROR_COUNT=0
+          WARN_COUNT=0
+          IGNORE_TYPES="FILE_PATH_CHANGES"
+          for p in patches/*.patch; do
+            echo "=== Checking $p ==="
+            #perl "$CHECKPATCH" --no-tree --strict --show-types ${IGNORE_TYPES:+--ignore "$IGNORE_TYPES"} "$p" | tee "checkpatch_${p##*/}.log" || true
+            perl "$CHECKPATCH" --no-tree --strict --show-types ${IGNORE_TYPES:+--ignore "$IGNORE_TYPES"} "$p" 2> >(grep -v "No typos will be found" | grep -v "No structs that should be const") | tee "checkpatch_${p##*/}.log" || true
+          done
+
+          # Aggregate using actual summary lines
+          ERROR_COUNT=$(grep -h '^total: ' checkpatch_*.log | grep -o '[0-9]\+ errors' | awk '{sum += $1} END {print sum+0}')
+          WARN_COUNT=$(grep -h '^total: ' checkpatch_*.log | grep -o '[0-9]\+ warnings' | awk '{sum += $1} END {print sum+0}')
+
+          echo "Total ERRORs: $ERROR_COUNT"
+          echo "Total WARNINGs: $WARN_COUNT"
+
+
+          log_files=(checkpatch_*.log)
+            if (( ${#log_files[@]} > 0 )); then
+                cat "${log_files[@]}" > checkpatch_report.txt
+            else
+                echo "No checkpatch logs found." > checkpatch_report.txt
+          fi
+
+
+          # Upload as artifact for convenience
+          echo "ERROR_COUNT=$ERROR_COUNT" >> "$GITHUB_ENV"
+          echo "WARN_COUNT=$WARN_COUNT" >> "$GITHUB_ENV"
+
+          # Fail only if ERRORs present (change condition to fail on warnings too)
+          if [[ "$ERROR_COUNT" -gt 0 ]]; then
+            echo "::error title=Checkpatch failed::Found $ERROR_COUNT errors"
+            exit 1
+          fi
+
+      - name: Upload checkpatch report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpatch-report
+          path: |
+            patches/*.patch
+            checkpatch_*.log
+            checkpatch_report.txt
