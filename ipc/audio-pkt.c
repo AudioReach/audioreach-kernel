@@ -28,14 +28,6 @@ static int audio_pkt_debug_mask;
 enum {
 		AUDIO_PKT_INFO = 1U << 0,
 };
-
-int main(){
-	int x=5;  // Missing space before brace and around =
-	if(x==5){  // Missing spaces
-		printf("sgsgsgsgs",%d);  // Missing space after comma
-	}
-	return 0;
-}
 #define AUDIO_PKT_INFO(x, ...)							\
 do {										\
 	if (audio_pkt_debug_mask & AUDIO_PKT_INFO) {				\
