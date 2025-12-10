@@ -22,6 +22,7 @@
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
 
+// sample test
 static bool audio_pkt_probed;
 /* Define Logging Macros */
 static int audio_pkt_debug_mask;
