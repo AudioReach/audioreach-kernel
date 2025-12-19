@@ -54,7 +54,6 @@ do {										\
 #define MODULE_NAME "audio-pkt"
 #define MINOR_NUMBER_COUNT 1
 #define AUDPKT_DRIVER_NAME "aud_pasthru_adsp"
-#define CHANNEL_NAME "to_apps"
 #define APM_AUDIO_DRV_NAME "q6apm-audio-pkt"
 
 struct q6apm_audio_pkt {
@@ -74,8 +73,6 @@ struct q6apm_audio_pkt {
 	spinlock_t queue_lock;
 	struct sk_buff_head queue;
 	wait_queue_head_t readq;
-	char dev_name[20];
-	char ch_name[20];
 	dev_t audio_pkt_major;
 	struct class *audio_pkt_class;
 
@@ -552,10 +549,7 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 		goto err_device;
 	}
 
-	strscpy(apm->dev_name, CHANNEL_NAME, 20);
-	strscpy(apm->ch_name, CHANNEL_NAME, 20);
-	dev_set_name(apm->dev, apm->dev_name);
-
+	dev_set_name(apm->dev, AUDPKT_DRIVER_NAME);
 
 	dev_set_drvdata(dev, apm);
 
