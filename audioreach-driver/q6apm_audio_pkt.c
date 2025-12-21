@@ -261,8 +261,6 @@ static int audio_pkt_open(struct inode *inode, struct file *file)
 	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
 
-	AUDIO_PKT_ERR("for %s\n", audpkt_dev->ch_name);
-
 	get_device(dev);
 	file->private_data = audpkt_dev;
 
@@ -572,8 +570,7 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 	ret = cdev_add(&apm->cdev, apm->audio_pkt_major,
 		       MINOR_NUMBER_COUNT);
 	if (ret) {
-		AUDIO_PKT_ERR("cdev_add failed for %s ret:%d\n",
-			      apm->dev_name, ret);
+		AUDIO_PKT_ERR("cdev_add failed with ret:%d\n",ret);
 		goto free_dev;
 	}
 
