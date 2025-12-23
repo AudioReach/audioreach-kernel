@@ -1,3 +1,4 @@
+
 name: kernel checkpatch
 
 on:
@@ -27,6 +28,18 @@ jobs:
           chmod +x checkpatch.pl
           echo "checkpatch=./checkpatch.pl" >> "$GITHUB_OUTPUT"
 
+      # NEW: scrub trailing whitespace ONLY in checkpatch.pl (not patches)
+      - name: Sanitize checkpatch.pl (trim trailing spaces, optional CRLF fix)
+        shell: bash
+        run: |
+          set -e
+          # Trim trailing whitespace from each line
+          sed -i 's/[[:space:]]\+$//' checkpatch.pl
+          # (Optional) Normalize CRLF to LF if needed
+          if file checkpatch.pl | grep -qi 'CRLF'; then
+            sed -i 's/\r$//' checkpatch.pl
+          fi
+
       - name: Generate patches for PR commits
         id: gen
         shell: bash
@@ -43,19 +56,6 @@ jobs:
             echo "No new commits/patches to check."
           fi
 
-
-        
-	  # NEW: scrub trailing whitespace from generated patches
-      - name: Scrub trailing whitespace in patches
-        if: steps.gen.outputs.count != '0'
-        shell: bash
-        run: |
-          set -e
-          for p in patches/*.patch; do
-            sed -i 's/[[:space:]]\+$//' "$p"
-          done
-   
-        
       - name: Run checkpatch (fail on ERROR, allow WARN)
         if: steps.gen.outputs.count != '0'
         shell: bash
@@ -67,7 +67,7 @@ jobs:
           WARN_COUNT=0
           IGNORE_TYPES="FILE_PATH_CHANGES"
           for p in patches/*.patch; do
-            echo "=== Checking $p ==="          
+            echo "=== Checking $p ==="
             perl "$CHECKPATCH" --no-tree --strict --show-types ${IGNORE_TYPES:+--ignore "$IGNORE_TYPES"} "$p" 2> >(grep -v "No typos will be found" | grep -v "No structs that should be const") | tee "checkpatch_${p##*/}.log" || true
           done
 
@@ -78,14 +78,12 @@ jobs:
           echo "Total ERRORs: $ERROR_COUNT"
           echo "Total WARNINGs: $WARN_COUNT"
 
-
           log_files=(checkpatch_*.log)
-            if (( ${#log_files[@]} > 0 )); then
-                cat "${log_files[@]}" > checkpatch_report.txt
-            else
-                echo "No checkpatch logs found." > checkpatch_report.txt
+          if (( ${#log_files[@]} > 0 )); then
+            cat "${log_files[@]}" > checkpatch_report.txt
+          else
+            echo "No checkpatch logs found." > checkpatch_report.txt
           fi
-
 
           # Upload as artifact for convenience
           echo "ERROR_COUNT=$ERROR_COUNT" >> "$GITHUB_ENV"
@@ -103,6 +101,5 @@ jobs:
         with:
           name: checkpatch-report
           path: |
-            patches/*.patch
-            checkpatch_*.log
-            checkpatch_report.txt
+                patches/*.patch
+                checkpatch_*.log
