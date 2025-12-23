@@ -60,6 +60,8 @@ do {										\
  * @audio_pkt_major: Major number of audio pkt driver
  * @audio_pkt_class: audio pkt class pointer
  */
+
+# test run
 struct audio_pkt_device {
 	gpr_device_t *adev;
 	struct device *dev;
