@@ -29,16 +29,16 @@ jobs:
           echo "checkpatch=./checkpatch.pl" >> "$GITHUB_OUTPUT"
 
       # NEW: scrub trailing whitespace ONLY in checkpatch.pl (not patches)
-      - name: Sanitize checkpatch.pl (trim trailing spaces, optional CRLF fix)
-        shell: bash
-        run: |
-          set -e
-          # Trim trailing whitespace from each line
-          sed -i 's/[[:space:]]\+$//' checkpatch.pl
-          # (Optional) Normalize CRLF to LF if needed
-          if file checkpatch.pl | grep -qi 'CRLF'; then
-            sed -i 's/\r$//' checkpatch.pl
-          fi
+      #- name: Sanitize checkpatch.pl (trim trailing spaces, optional CRLF fix)
+       # shell: bash
+       # run: |
+       #   set -e
+       #   # Trim trailing whitespace from each line
+       #   sed -i 's/[[:space:]]\+$//' checkpatch.pl
+       #   # (Optional) Normalize CRLF to LF if needed
+       #   if file checkpatch.pl | grep -qi 'CRLF'; then
+       #     sed -i 's/\r$//' checkpatch.pl
+        #  fi
 
       - name: Generate patches for PR commits
         id: gen
