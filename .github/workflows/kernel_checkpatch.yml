@@ -83,6 +83,15 @@ jobs:
             exit 1
           fi
 
+          if [[ "$WARN_COUNT" -gt 0 ]]; then
+            echo "::error title=Checkpatch warnings::Found $WARN_COUNT warnings"  # treat warnings as errors
+          fi
+
+          # Fail on either errors OR warnings
+          if [[ "$ERROR_COUNT" -gt 0 || "$WARN_COUNT" -gt 0 ]]; then
+            exit 1
+          fi
+
       - name: Upload checkpatch report
         if: always()
         uses: actions/upload-artifact@v4
