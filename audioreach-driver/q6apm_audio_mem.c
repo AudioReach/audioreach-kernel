@@ -791,7 +791,6 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	u64 smmu_sid_mask = 0;
 	struct device *dev = &pdev->dev;
 	struct of_phandle_args iommuspec;
-	bool smmu_enabled = true;
 	struct msm_audio_mem_private *msm_audio_mem_data = NULL;
 
 	if (dev->of_node == NULL) {
@@ -807,15 +806,19 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 
-        msm_audio_mem_data->smmu_enabled = smmu_enabled;
+	msm_audio_mem_data->driver_name = "msm_audio_mem";
 
-        dev_err(dev, "%s: SMMU is %s\n", __func__, (!smmu_enabled) ? "Disabled" : "Enabled");
+	/* Enable SMMU only if DT has an 'iommus' property */
+	if (of_find_property(dev->of_node, "iommus", NULL))
+		msm_audio_mem_data->smmu_enabled = true;
+	else
+		msm_audio_mem_data->smmu_enabled = false;
 
-	msm_audio_mem_data->smmu_enabled = smmu_enabled;
+	dev_info(dev, "%s: SMMU is %s\n", __func__,
+		 (!msm_audio_mem_data->smmu_enabled) ? "Disabled" : "Enabled");
 
 	dev->dma_coherent = true;
-	if (smmu_enabled) {
-		msm_audio_mem_data->driver_name = "msm_audio_mem";
+	if (msm_audio_mem_data->smmu_enabled) {
 		/* Get SMMU SID information from Devicetree */
 		smmu_sid_mask = QCOM_SMMU_SID_MASK;
 
@@ -824,11 +827,13 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 		if (rc) {
 			dev_err(dev, "%s: could not get smmu SID, ret = %d\n",
 				__func__, rc);
+			/* Parsing failed; disable SMMU safely */
+			msm_audio_mem_data->smmu_enabled = false;
 		} else {
 			smmu_sid = (iommuspec.args[0] & smmu_sid_mask);
 		}
-		msm_audio_mem_data->smmu_sid_bits =
-			smmu_sid << MSM_AUDIO_SMMU_SID_OFFSET;
+		if (msm_audio_mem_data->smmu_enabled)
+			msm_audio_mem_data->smmu_sid_bits = smmu_sid << MSM_AUDIO_SMMU_SID_OFFSET;
 	}
 
 	if (!rc) {
