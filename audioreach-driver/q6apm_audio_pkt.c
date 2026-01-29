@@ -115,6 +115,15 @@ struct gpr_port_map {
 	u32 dst_port;
 };
 
+struct apm_cmd_rsp_get_spf_status_t {
+	/* Spf status
+	 * @values
+	 * 0 -> Not ready
+	 * 1 -> Ready
+	 */
+	uint32_t status;
+};
+
 #define dev_to_audpkt_dev(_dev) container_of(_dev, struct q6apm_audio_pkt, dev)
 #define cdev_to_audpkt_dev(_cdev) container_of(_cdev, struct q6apm_audio_pkt, cdev)
 
@@ -596,6 +605,7 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
 	struct gpr_ibasic_rsp_result_t *result;
 	struct gpr_hdr *hdr = &data->hdr;
+	struct apm_cmd_rsp_get_spf_status_t *spf_status;
 	uint8_t *pkt = NULL;
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
@@ -638,16 +648,17 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
         skb_queue_tail(&apm->queue, skb);
         spin_unlock_irqrestore(&apm->queue_lock, flags);
 
+	if (hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
+		result = data->payload;
+		spf_status = (struct apm_cmd_rsp_get_spf_status_t *)(pkt+hdr_size);
+		apm->result.opcode = result->opcode;
+		apm->result.status = result->status;
+		/* First word of result it state */
+		apm->state = spf_status->status;
+	}
 
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&apm->readq);
-	if(hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
-                 result = data->payload;
-                 apm->result.opcode = hdr->opcode;
-                 apm->result.status = 0;
-                 /* First word of result it state */
-                 apm->state = hdr->opcode;
-     }
 
 	return 0;
 }
