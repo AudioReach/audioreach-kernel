@@ -13,9 +13,7 @@
 #include <linux/soc/qcom/apr.h>
 #include <dt-bindings/soc/qcom,gpr.h>
 #include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
-#include "q6apm.h"
-#include "q6prm.h"
-#include "audioreach.h"
+#include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 
 struct q6prm {
@@ -43,6 +41,10 @@ struct prm_cmd_request_rsc {
 	struct apm_module_param_data param_data;
 	uint32_t num_clk_id;
 	struct audio_hw_clk_cfg clock_id;
+} __packed;
+
+struct audio_hw_clk_rel_cfg {
+	uint32_t clock_id;
 } __packed;
 
 struct prm_cmd_release_rsc {
@@ -186,16 +188,20 @@ static int q6prm_audioreach_set_hw_core_req(struct device *dev, uint32_t hw_bloc
 }
 
 int q6prm_audioreach_vote_lpass_core_hw(struct device *dev, uint32_t hw_block_id,
-			     const char *client_name, uint32_t *client_handle)
+					const char *client_name,
+					uint32_t *client_handle)
 {
 	return q6prm_audioreach_set_hw_core_req(dev, hw_block_id, true);
 
 }
+EXPORT_SYMBOL_GPL(q6prm_audioreach_vote_lpass_core_hw);
 
-int q6prm_audioreach_unvote_lpass_core_hw(struct device *dev, uint32_t hw_block_id, uint32_t client_handle)
+int q6prm_audioreach_unvote_lpass_core_hw(struct device *dev, uint32_t hw_block_id,
+					  uint32_t client_handle)
 {
 	return q6prm_audioreach_set_hw_core_req(dev, hw_block_id, false);
 }
+EXPORT_SYMBOL_GPL(q6prm_audioreach_unvote_lpass_core_hw);
 
 static int q6prm_audioreach_request_lpass_clock(struct device *dev, int clk_id, int clk_attr, int clk_root,
 				     unsigned int freq)
@@ -268,14 +274,15 @@ static int q6prm_audioreach_release_lpass_clock(struct device *dev, int clk_id, 
 	return rc;
 }
 
-int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_attr, int clk_root,
-			  unsigned int freq)
+int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_attr,
+				     int clk_root, unsigned int freq)
 {
 	if (freq)
 		return q6prm_audioreach_request_lpass_clock(dev, clk_id, clk_attr, clk_root, freq);
 
 	return q6prm_audioreach_release_lpass_clock(dev, clk_id, clk_attr, clk_root, freq);
 }
+EXPORT_SYMBOL_GPL(q6prm_audioreach_set_lpass_clock);
 
 static int prm_audioreach_callback(struct gpr_resp_pkt *data, void *priv, int op)
 {
@@ -342,12 +349,15 @@ static gpr_driver_t prm_audioreach_driver = {
 //module_gpr_driver(prm_audioreach_driver);
 int q6prm_audioreach_init(void)
 {
-	    return apr_driver_register(&prm_audioreach_driver);
+	return apr_driver_register(&prm_audioreach_driver);
 }
+EXPORT_SYMBOL_GPL(q6prm_audioreach_init);
 
 void q6prm_audioreach_exit(void)
 {
-	  apr_driver_unregister(&prm_audioreach_driver);
+	apr_driver_unregister(&prm_audioreach_driver);
 }
+EXPORT_SYMBOL_GPL(q6prm_audioreach_exit);
+
 MODULE_DESCRIPTION("Q6 Proxy Resource Manager");
 MODULE_LICENSE("GPL");
