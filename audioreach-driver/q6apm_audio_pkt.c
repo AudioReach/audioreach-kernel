@@ -585,7 +585,7 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 
 	q6apm_audio_is_adsp_ready();
 	AUDIO_PKT_INFO("Audio Packet Port Driver Initialized\n");
-	return of_platform_populate(dev->of_node, NULL, NULL, dev);
+	return devm_of_platform_populate(dev);
 
 free_dev:
 	put_device(dev);
@@ -665,7 +665,7 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 
 static void q6apm_audio_pkt_remove(gpr_device_t *adev)
 {
-	of_platform_depopulate(&adev->dev);
+	return;
 }
 
 #ifdef CONFIG_OF
