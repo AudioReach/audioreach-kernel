@@ -590,19 +590,20 @@ err_chrdev:
 	return ret;
 }
 
-static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int op)
+static int q6apm_audio_pkt_callback(const struct gpr_resp_pkt *data, void *priv, int op)
 {
 	gpr_device_t *gdev = priv;
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
-	struct gpr_ibasic_rsp_result_t *result;
-	struct gpr_hdr *hdr = &data->hdr;
+	const struct gpr_ibasic_rsp_result_t *result;
+	const struct gpr_hdr *hdr = &data->hdr;
 	uint8_t *pkt = NULL;
 	uint16_t hdr_size, pkt_size;
 	unsigned long flags;
 	struct sk_buff *skb;
-	int ret;
 	struct gpr_port_map *audpkt_port_map;
 
+	u16 new_dest_port = 0, new_src_port = 0;
+	bool remap_ports = false;
 
         hdr_size = hdr->hdr_size * 4;
         pkt_size = hdr->pkt_size;
@@ -610,8 +611,9 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
 	mutex_lock(&apm->audpkt_port_lock);
 	audpkt_port_map = idr_find(&apm->audpkt_port_idr, hdr->token);
 	if (audpkt_port_map) {
-		hdr->dest_port = audpkt_port_map->src_port;
-		hdr->src_port = audpkt_port_map->dst_port;
+		new_dest_port = audpkt_port_map->src_port;
+		new_src_port  = audpkt_port_map->dst_port;
+		remap_ports = true;
 
 		idr_remove(&apm->audpkt_port_idr, hdr->token);
 		kfree(audpkt_port_map);
@@ -627,9 +629,18 @@ static int q6apm_audio_pkt_callback(struct gpr_resp_pkt *data, void *priv, int o
         memcpy(pkt, (uint8_t *)data, hdr_size);
         memcpy(pkt + hdr_size, (uint8_t *)data->payload, pkt_size - hdr_size);
 
+		if (remap_ports) {
+			struct gpr_hdr *out_hdr = (struct gpr_hdr *)pkt;
+
+			out_hdr->dest_port = new_dest_port;
+			out_hdr->src_port  = new_src_port;
+		}
+
         skb = alloc_skb(pkt_size, GFP_ATOMIC);
-        if (!skb)
+		if (!skb) {
+				kfree(pkt);
                 return -ENOMEM;
+		}
 
         skb_put_data(skb, (void *)pkt, pkt_size);
 
