@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2021, Linaro Limited
-// Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
 #include <linux/slab.h>
 #include <linux/wait.h>
@@ -277,12 +277,12 @@ int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_att
 	return q6prm_audioreach_release_lpass_clock(dev, clk_id, clk_attr, clk_root, freq);
 }
 
-static int prm_audioreach_callback(struct gpr_resp_pkt *data, void *priv, int op)
+static int prm_audioreach_callback(const struct gpr_resp_pkt *data, void *priv, int op)
 {
 	gpr_device_t *gdev = priv;
 	struct q6prm *prm = dev_get_drvdata(&gdev->dev);
-	struct gpr_ibasic_rsp_result_t *result;
-	struct gpr_hdr *hdr = &data->hdr;
+	const struct gpr_ibasic_rsp_result_t *result;
+	const struct gpr_hdr *hdr = &data->hdr;
 
 	switch (hdr->opcode) {
 	case PRM_CMD_RSP_REQUEST_HW_RSC:
