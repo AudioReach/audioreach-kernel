@@ -29,6 +29,7 @@
 #include "audioreach.h"
 #include "q6apm.h"
 #include "q6prm_audioreach.h"
+#include "ar_kcompat.h"
 
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
@@ -590,7 +591,14 @@ err_chrdev:
 	return ret;
 }
 
-static int q6apm_audio_pkt_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+/*
+ * Generate the kernel-facing wrapper with the correct signature
+ * for <=6.19 (non-const) and >=7.0 (const). The wrapper calls
+ * q6apm_audio_pkt_callback_core() which always uses 'const'.
+ */
+AR_GPR_CB_WRAPPER(q6apm_audio_pkt_callback)
+
+static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *priv, int op)
 {
 	gpr_device_t *gdev = priv;
 	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
@@ -638,8 +646,8 @@ static int q6apm_audio_pkt_callback(const struct gpr_resp_pkt *data, void *priv,
 
         skb = alloc_skb(pkt_size, GFP_ATOMIC);
 		if (!skb) {
-				kfree(pkt);
-                return -ENOMEM;
+			kfree(pkt);
+			return -ENOMEM;
 		}
 
         skb_put_data(skb, (void *)pkt, pkt_size);

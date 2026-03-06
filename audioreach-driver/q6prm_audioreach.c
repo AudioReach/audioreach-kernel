@@ -17,6 +17,7 @@
 #include "q6prm.h"
 #include "audioreach.h"
 #include "q6prm_audioreach.h"
+#include "ar_kcompat.h"
 
 struct q6prm {
 	struct device *dev;
@@ -277,7 +278,15 @@ int q6prm_audioreach_set_lpass_clock(struct device *dev, int clk_id, int clk_att
 	return q6prm_audioreach_release_lpass_clock(dev, clk_id, clk_attr, clk_root, freq);
 }
 
-static int prm_audioreach_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+/*
+ * Generate the kernel-facing wrapper with the correct signature
+ * for <=6.19 (non-const) and >=7.0 (const). The wrapper calls
+ * prm_audioreach_callback_core() which always uses 'const'.
+ */
+AR_GPR_CB_WRAPPER(prm_audioreach_callback)
+
+static int prm_audioreach_callback_core(const struct gpr_resp_pkt *data,
+					void *priv, int op)
 {
 	gpr_device_t *gdev = priv;
 	struct q6prm *prm = dev_get_drvdata(&gdev->dev);
