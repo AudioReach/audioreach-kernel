@@ -680,6 +680,7 @@ static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,qcs9075-sndcard", "qcs9075"},
 	{.compatible = "qcom,qcs9100-sndcard", "qcs9100"},
 	{.compatible = "qcom,sm8750-sndcard", "sm8750"},
+	{.compatible = "qcom,x1e80100-sndcard", "x1e80100"},
 	{}
 };
 
