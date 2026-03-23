@@ -127,7 +127,8 @@ static int qcs6490_snd_sdw_prepare(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
-	int ret;
+	struct snd_soc_dai *codec_dai;
+	int ret, i;
 
 	if (!sruntime)
 		return 0;
@@ -167,6 +168,17 @@ static int qcs6490_snd_sdw_prepare(struct snd_pcm_substream *substream,
 		return ret;
 	}
 	*stream_prepared  = true;
+
+	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_RX_0:
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			for_each_rtd_codec_dais(rtd, i, codec_dai)
+				snd_soc_dai_digital_mute(codec_dai, 0, substream->stream);
+		}
+		break;
+	default:
+		break;
+	}
 
 	return ret;
 }
@@ -235,6 +247,19 @@ static void qcs6490_snd_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct qcs6490_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
 	struct sdw_stream_runtime *sruntime = pdata->sruntime[cpu_dai->id];
+	struct snd_soc_dai *codec_dai;
+	int i;
+
+	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_RX_0:
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			for_each_rtd_codec_dais(rtd, i, codec_dai)
+				snd_soc_dai_digital_mute(codec_dai, 1, substream->stream);
+		}
+		break;
+	default:
+		break;
+	}
 
 	pdata->sruntime[cpu_dai->id] = NULL;
 	sdw_release_stream(sruntime);
