@@ -25,8 +25,9 @@
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <dt-bindings/firmware/qcom,scm.h>
 #include <sound/soc.h>
-#include "q6prm_audioreach.h"
 #include <linux/msm_audio.h>
+#include "q6apm_audio.h"
+#include "q6prm_audioreach.h"
 
 #define DRV_NAME "q6apm-audio-mem"
 
