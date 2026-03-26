@@ -429,6 +429,7 @@ int msm_audio_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len)
 	return status;
 }
 
+#ifdef QCOM_HYP_ASSIGN
 static int msm_audio_set_hyp_assign(int fd, bool assign)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
@@ -448,6 +449,7 @@ static int msm_audio_set_hyp_assign(int fd, bool assign)
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
 	return status;
 }
+#endif
 
 static void msm_audio_get_handle(int fd, void **handle)
 {
@@ -550,6 +552,7 @@ static int msm_audio_mem_free(struct dma_buf *dma_buf, struct msm_audio_mem_priv
 	return 0;
 }
 
+#ifdef QCOM_HYP_ASSIGN
 static int msm_audio_hyp_unassign(struct msm_audio_fd_data *msm_audio_fd_data)
 {
 	int ret = 0;
@@ -568,6 +571,7 @@ static int msm_audio_hyp_unassign(struct msm_audio_fd_data *msm_audio_fd_data)
 	}
 	return ret;
 }
+#endif
 
 /**
  * msm_audio_mem_crash_handler -
@@ -588,8 +592,10 @@ void msm_audio_mem_crash_handler(void)
 		handle = msm_audio_fd_data->handle;
 		mem_data = dev_get_drvdata(msm_audio_fd_data->dev);
 		/*  clean if CMA was used*/
+#ifdef QCOM_HYP_ASSIGN
 		if (msm_audio_fd_data->hyp_assign)
 			msm_audio_hyp_unassign(msm_audio_fd_data);
+#endif
 		if (handle)
 			msm_audio_mem_free(handle, mem_data);
 	}
@@ -678,6 +684,7 @@ static long msm_audio_mem_ioctl(struct file *file, unsigned int ioctl_num,
 		}
 		msm_audio_delete_fd_entry(mem_handle);
 		break;
+#ifdef QCOM_HYP_ASSIGN
 	case IOCTL_MAP_HYP_ASSIGN:
 		ret = msm_audio_get_phy_addr((int)ioctl_param, &paddr, &pa_len);
 		if (ret < 0) {
@@ -710,6 +717,7 @@ static long msm_audio_mem_ioctl(struct file *file, unsigned int ioctl_num,
 		pr_debug("%s: qcom scm unassign success\n", __func__);
 		msm_audio_set_hyp_assign((int)ioctl_param, false);
 		break;
+#endif
 	default:
 		pr_err_ratelimited("%s Entered default. Invalid ioctl num %u\n",
 				   __func__, ioctl_num);
@@ -859,13 +867,14 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void q6apm_audio_mem_remove(struct platform_device *pdev)
+static int q6apm_audio_mem_remove(struct platform_device *pdev)
 {
 	struct msm_audio_mem_private *mem_data = dev_get_drvdata(&pdev->dev);
 
 	mem_data->smmu_enabled = false;
 	mem_data->device_status = 0;
 	msm_audio_mem_unreg_chrdev(mem_data);
+	return 0;
 }
 
 #ifdef CONFIG_OF
