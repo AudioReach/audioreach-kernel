@@ -9,8 +9,6 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
-#include "q6dsp-lpass-clocks.h"
-#include "q6prm.h"
 #include "q6prm_audioreach.h"
 
 

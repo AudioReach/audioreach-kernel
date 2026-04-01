@@ -26,11 +26,15 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
-#include "audioreach.h"
-#include "q6apm.h"
+#include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 #include "ar_kcompat.h"
 
+#define APM_MODULE_INSTANCE_ID			0x00000001
+#define APM_CMD_CLOSE_ALL			0x01001013
+#define APM_CMD_GET_SPF_STATE			0x01001021
+#define APM_CMD_RSP_GET_SPF_STATE		0x02001007
+#define APM_CMD_CLOSE_ALL			0x01001013
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_MEMORY_MAP_BIT_MASK_IS_OFFSET_MODE  0x00000004UL
 
