@@ -7,13 +7,13 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
-      - temp
+      - ci
     paths-ignore:
       - '.github/**'
 
 jobs:
   load_parameters:
-    uses: Audioreach/audioreach-workflows/.github/workflows/loading.yml@temp
+    uses: Audioreach/audioreach-workflows/.github/workflows/loading.yml@ci
     with:
       event_name: ${{ github.event_name }}
       pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -21,7 +21,7 @@ jobs:
 
   build:
     needs: load_parameters
-    uses: Audioreach/audioreach-workflows/.github/workflows/build.yml@temp
+    uses: Audioreach/audioreach-workflows/.github/workflows/build.yml@ci
     secrets: inherit
     with:
       build_args: ${{ needs.load_parameters.outputs.build_args }}
@@ -32,7 +32,7 @@ jobs:
 
   process_image:
     needs: [ load_parameters, build ]
-    uses: Audioreach/audioreach-workflows/.github/workflows/process_image.yml@temp
+    uses: Audioreach/audioreach-workflows/.github/workflows/process_image.yml@ci
     secrets: inherit
     with:
       event_name: ${{ github.event_name }}
@@ -97,7 +97,7 @@ jobs:
     permissions:
       checks: write
       pull-requests: write
-    uses: AudioReach/audioreach-workflows/.github/workflows/test.yml@temp
+    uses: AudioReach/audioreach-workflows/.github/workflows/test.yml@ci
     secrets: inherit
     with:
       build_matrix: ${{ needs.filter_test_matrix.outputs.test_matrix }}
