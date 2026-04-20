@@ -29,7 +29,6 @@ make -j$(nproc) defconfig
 make -j$(nproc) Image.gz dtbs modules
 cd ..
 
-
 # 2) Clone AudioReach and build against the first kernel
 git clone https://github.com/AudioReach/audioreach-kernel.git
 cd audioreach-kernel
