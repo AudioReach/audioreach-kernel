@@ -2,7 +2,7 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
-
+  
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
