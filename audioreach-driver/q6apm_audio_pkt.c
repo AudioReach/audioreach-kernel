@@ -155,10 +155,11 @@ static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode), wait_time * HZ);
 
 	if (!rc) {
-		dev_err(dev, "CMD timeout for [%x] opcode\n", hdr->opcode);
+		dev_err(&g_apm->adev->dev, "CMD timeout for [%x] opcode\n", hdr->opcode);
 		rc = -ETIMEDOUT;
 	} else if (result->status > 0) {
-		dev_err(dev, "DSP returned error[%x] %x\n", hdr->opcode, result->status);
+		dev_err(&g_apm->adev->dev, "DSP returned error[%x] %x\n", hdr->opcode,
+			result->status);
 		rc = -EINVAL;
 	} else {
 		/* DSP successfully finished the command */
@@ -280,10 +281,13 @@ static int audio_pkt_open(struct inode *inode, struct file *file)
  */
 static int audio_pkt_release(struct inode *inode, struct file *file)
 {
-	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
+	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
 	struct device *dev = audpkt_dev->dev;
 	struct sk_buff *skb;
 	unsigned long flags;
+
+	if (!audpkt_dev || !audpkt_dev->dev)
+		return -EINVAL;
 
 	spin_lock_irqsave(&audpkt_dev->queue_lock, flags);
 
@@ -684,6 +688,7 @@ static void q6apm_audio_pkt_remove(gpr_device_t *adev)
 	unregister_chrdev_region(apm->audio_pkt_major, MINOR_NUMBER_COUNT);
 
 	dev_set_drvdata(dev, NULL);
+	g_apm = NULL;
 }
 
 #ifdef CONFIG_OF
