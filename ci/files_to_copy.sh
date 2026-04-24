@@ -5,5 +5,4 @@
 cd ..
 
 # copy the build artifacts to a temporary directory
-cp -R build/usr/* /tmp/rootfs/usr/
-cp -R build/etc/* /tmp/rootfs/etc/
+cp  -R build/* /tmp/rootfs/lib/modules/*/updates
