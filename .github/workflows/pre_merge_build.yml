@@ -8,6 +8,9 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - ci
+  push:
+    branches:
+      - ci
     paths-ignore:
       - '.github/**'
 
