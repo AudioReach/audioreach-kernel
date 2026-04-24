@@ -13,7 +13,6 @@ on:
       - ci
     paths-ignore:
       - '.github/**'
-
 jobs:
   load_parameters:
     uses: Audioreach/audioreach-workflows/.github/workflows/loading.yml@ci
