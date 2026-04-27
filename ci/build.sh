@@ -25,6 +25,6 @@ cd -
 # make sure we are in the right directory
 cd ${GITHUB_WORKSPACE}
 
-make KERNEL_SRC=../sysroots/armv8-2a-qcom-linux/lib/modules/*/build/ modules
+make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
 
 cp audioreach-driver/*.ko build/
