@@ -27,4 +27,4 @@ cd ${GITHUB_WORKSPACE}
 
 make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
 
-cp audioreach-driver/*.ko build/
+cp audioreach-driver/*.ko ${GITHUB_WORKSPACE}/build/
