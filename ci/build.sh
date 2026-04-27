@@ -17,9 +17,12 @@ echo "Running build script..."
 source ${GITHUB_WORKSPACE}/install/environment-setup-armv8-2a-qcom-linux
 
 # make sure we are in the right directory
-mkdir ${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/*/build
+KERNEL_DIR=$(echo "${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/"*/build)
+mkdir -p "$KERNEL_DIR"
 # Prepare Kernel module
-cd ${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/*/build
+# cd ${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/*/build
+cd "$KERNEL_DIR"
+
 make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_prepare
 cd -
 # make sure we are in the right directory
