@@ -16,18 +16,10 @@ echo "Running build script..."
 # Build/Compile audioreach-kernel
 source ${GITHUB_WORKSPACE}/install/environment-setup-armv8-2a-qcom-linux
 
-# make sure we are in the right directory
-KERNEL_DIR=$(echo "${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/"*/build)
-mkdir -p "$KERNEL_DIR"
 # Prepare Kernel module
 # cd ${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/*/build
-cd "$KERNEL_DIR"
-
+cd sysroots/armv8-2a-qcom-linux/lib/modules/*/build
 make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_prepare
 cd -
-# make sure we are in the right directory
-cd ${GITHUB_WORKSPACE}
-
 make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
-
-cp audioreach-driver/*.ko ${GITHUB_WORKSPACE}/build/
+cp audioreach-driver/*.ko /tmp/rootfs/lib/modules/*/updates
