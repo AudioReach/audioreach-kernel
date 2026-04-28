@@ -21,3 +21,4 @@ cd $PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build
 make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_prepare
 cd -
 make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
+mkdir build
