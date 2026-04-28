@@ -17,9 +17,9 @@ echo "Running build script..."
 source ${GITHUB_WORKSPACE}/install/environment-setup-armv8-2a-qcom-linux
 
 # Prepare Kernel module
-# cd ${GITHUB_WORKSPACE}/install/sysroots/armv8-2a-qcom-linux/lib/modules/*/build
-cd sysroots/armv8-2a-qcom-linux/lib/modules/*/build
+cd $PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build
 make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_prepare
 cd -
 make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
-cp audioreach-driver/*.ko /tmp/rootfs/lib/modules/*/updates
+cp audioreach-driver/*.ko ${GITHUB_WORKSPACE}/build/
+cp  -R ${GITHUB_WORKSPACE}/build/* /tmp/rootfs/lib/modules/*/updates
