@@ -22,4 +22,4 @@ make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE modules_prepare
 cd -
 make KERNEL_SRC=$PKG_CONFIG_SYSROOT_DIR/lib/modules/*/build/ modules
 mkdir ${GITHUB_WORKSPACE}/build
-cp audioreach-driver/*.ko ${GITHUB_WORKSPACE}/build/
+cp -r audioreach-driver/*.ko ${GITHUB_WORKSPACE}/build/
