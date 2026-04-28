@@ -5,4 +5,4 @@
 cd ..
 
 # copy the build artifacts to a temporary directory
-cp  -R build/* /tmp/rootfs/lib/modules/*/updates
+cp -r audioreach-driver/*.ko /tmp/rootfs/lib/modules/*/updates
