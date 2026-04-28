@@ -5,4 +5,4 @@
 cd ..
 
 # copy the build artifacts to a temporary directory
-cp  -R ${GITHUB_WORKSPACE}/build/* /tmp/rootfs/lib/modules/*/updates
+cp  -R build/* /tmp/rootfs/lib/modules/*/updates
