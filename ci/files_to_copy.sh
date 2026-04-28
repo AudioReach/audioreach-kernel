@@ -5,4 +5,4 @@
 cd ..
 
 # copy the build artifacts to a temporary directory
-cp -r audioreach-driver/*.ko /tmp/rootfs/lib/modules/*/updates
+cp  -R ${GITHUB_WORKSPACE}/build/* /tmp/rootfs/lib/modules/*/updates
