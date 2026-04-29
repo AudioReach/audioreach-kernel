@@ -28,6 +28,8 @@ struct spf_core {
 	bool is_ready;
 };
 
+
+
 struct spf_core_private {
 	struct device *dev;
 	struct mutex lock;
