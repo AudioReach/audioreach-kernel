@@ -2,7 +2,6 @@
 // Copyright (c) 2020, Linaro Limited
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
-#include <dt-bindings/soc/qcom,gpr.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
@@ -23,12 +22,9 @@
 #include <linux/termios.h>
 #include <linux/soc/qcom/apr.h>
 #include <linux/wait.h>
-#include <sound/soc.h>
-#include <sound/soc-dapm.h>
-#include <sound/pcm.h>
 #include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
-#include "ar_kcompat.h"
+#include <linux/rpmsg.h>
 
 #define APM_MODULE_INSTANCE_ID			0x00000001
 #define APM_CMD_CLOSE_ALL			0x01001013
@@ -60,15 +56,20 @@ do {										\
 #define MINOR_NUMBER_COUNT 1
 #define AUDPKT_DRIVER_NAME "aud_pasthru_adsp"
 
-struct q6apm_audio_pkt {
-        struct device *dev;
-	gpr_port_t *port;
-        gpr_device_t *adev;
-        /* For Graph OPEN/START/STOP/CLOSE operations */
-        //wait_queue_head_t wait;
-        struct gpr_ibasic_rsp_result_t result;
+#define register_rpmsg_driver(drv) \
+	__register_rpmsg_driver(drv, THIS_MODULE)
 
-        uint32_t state;
+#define module_rpmsg_driver(__rpmsg_driver) \
+	module_driver(__rpmsg_driver, register_rpmsg_driver, \
+			unregister_rpmsg_driver)
+
+struct audio_pkt {
+	struct device *dev;
+	gpr_port_t *port;
+	struct rpmsg_device *rpdev;
+	struct gpr_ibasic_rsp_result_t result;
+
+	uint32_t state;
 
 	struct cdev cdev;
 	struct mutex lock;
@@ -77,9 +78,6 @@ struct q6apm_audio_pkt {
 	wait_queue_head_t readq;
 	dev_t audio_pkt_major;
 	struct class *audio_pkt_class;
-
-	struct mutex audpkt_port_lock;
-	struct idr audpkt_port_idr;
 };
 
 struct audio_pkt_apm_cmd_shared_mem_map_regions_t {
@@ -117,17 +115,17 @@ struct gpr_port_map {
 	u32 dst_port;
 };
 
-#define dev_to_audpkt_dev(_dev) container_of(_dev, struct q6apm_audio_pkt, dev)
-#define cdev_to_audpkt_dev(_cdev) container_of(_cdev, struct q6apm_audio_pkt, cdev)
+#define dev_to_audpkt_dev(_dev) container_of(_dev, struct audio_pkt, dev)
+#define cdev_to_audpkt_dev(_cdev) container_of(_cdev, struct audio_pkt, cdev)
 
-static struct q6apm_audio_pkt *g_apm;
+static struct audio_pkt *g_apm;
 
-static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
-			     struct gpr_ibasic_rsp_result_t *result, struct mutex *cmd_lock,
-			     gpr_port_t *port, wait_queue_head_t *cmd_wait,
-			     struct gpr_pkt *pkt, uint32_t rsp_opcode)
+static int send_audio_cmd_sync(struct device *dev, struct rpmsg_device *rpdev,
+										struct gpr_ibasic_rsp_result_t *result,
+										struct mutex *cmd_lock, gpr_port_t *port,
+										wait_queue_head_t *cmd_wait,
+										struct gpr_pkt *pkt, uint32_t rsp_opcode)
 {
-
 	struct gpr_hdr *hdr = &pkt->hdr;
 	int rc, wait_time = 2;
 
@@ -138,15 +136,11 @@ static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 	if (hdr->opcode == APM_CMD_CLOSE_ALL)
 		wait_time = 20;
 
-	if (port)
-		rc = gpr_send_port_pkt(port, pkt);
-	else if (gdev)
-		rc = gpr_send_pkt(gdev, pkt);
-	else
-		rc = -EINVAL;
-
-	if (rc < 0)
+	rc = rpmsg_send(rpdev->ept, pkt, (hdr->pkt_size + sizeof(struct gpr_hdr)));
+	if (rc) {
+		dev_err(dev, "rpmsg_send faied, returned error %d\n", rc);
 		goto err;
+	}
 
 	if (rsp_opcode)
 		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode) ||
@@ -155,10 +149,10 @@ static int q6apm_send_audio_cmd_sync(struct device *dev, gpr_device_t *gdev,
 		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode), wait_time * HZ);
 
 	if (!rc) {
-		dev_err(&g_apm->adev->dev, "CMD timeout for [%x] opcode\n", hdr->opcode);
+		dev_err(dev, "CMD timeout for [%x] opcode\n", hdr->opcode);
 		rc = -ETIMEDOUT;
 	} else if (result->status > 0) {
-		dev_err(&g_apm->adev->dev, "DSP returned error[%x] %x\n", hdr->opcode,
+		dev_err(dev, "DSP returned error[%x] %x\n", hdr->opcode,
 			result->status);
 		rc = -EINVAL;
 	} else {
@@ -171,16 +165,16 @@ err:
 	return rc;
 }
 
-
-static int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt, uint32_t rsp_opcode)
+static int audio_send_cmd(struct audio_pkt *apm, struct gpr_pkt *pkt,
+										  uint32_t rsp_opcode)
 {
-	gpr_device_t *gdev = apm->adev;
+	struct rpmsg_device *rpdev = apm->rpdev;
 
-	return q6apm_send_audio_cmd_sync(&gdev->dev, gdev, &apm->result, &apm->lock,
+	return send_audio_cmd_sync(apm->dev, rpdev, &apm->result, &apm->lock,
 					NULL, &apm->readq, pkt, rsp_opcode);
 }
 
-static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
+static void *__audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
 				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
 {
 	struct gpr_pkt *pkt;
@@ -217,51 +211,28 @@ static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t
 	return pkt;
 }
 
-static void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
+static void *audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
 {
-	return __q6apm_audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
+	return __audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
 				       APM_MODULE_INSTANCE_ID, true);
 }
 
-static int q6apm_audio_get_apm_state(struct q6apm_audio_pkt *apm)
+static void audio_close_all(void)
 {
 	struct gpr_pkt *pkt;
 
-	pkt = q6apm_audio_alloc_apm_cmd_pkt(0, APM_CMD_GET_SPF_STATE, 0);
-	if (IS_ERR(pkt))
-		return PTR_ERR(pkt);
-
-	q6apm_audio_send_cmd(apm, pkt, APM_CMD_RSP_GET_SPF_STATE);
-
-	kfree(pkt);
-
-	return apm->state;
-}
-
-bool q6apm_audio_is_adsp_ready(void)
-{
-	if (g_apm)
-		return q6apm_audio_get_apm_state(g_apm);
-
-	return false;
-}
-
-static void q6apm_audio_close_all(void)
-{
-	struct gpr_pkt *pkt;
-
-	pkt = q6apm_audio_alloc_apm_cmd_pkt(0, APM_CMD_CLOSE_ALL, 0);
+	pkt = audio_alloc_apm_cmd_pkt(0, APM_CMD_CLOSE_ALL, 0);
 	if (IS_ERR(pkt))
 		return;
 
-	q6apm_audio_send_cmd(g_apm, pkt, GPR_BASIC_RSP_RESULT);
+	audio_send_cmd(g_apm, pkt, GPR_BASIC_RSP_RESULT);
 
 	kfree(pkt);
 }
 
 static int audio_pkt_open(struct inode *inode, struct file *file)
 {
-	struct q6apm_audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
+	struct audio_pkt *audpkt_dev = cdev_to_audpkt_dev(inode->i_cdev);
 	struct device *dev = audpkt_dev->dev;
 
 	get_device(dev);
@@ -281,7 +252,7 @@ static int audio_pkt_open(struct inode *inode, struct file *file)
  */
 static int audio_pkt_release(struct inode *inode, struct file *file)
 {
-	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
+	struct audio_pkt *audpkt_dev = file->private_data;
 	struct device *dev = audpkt_dev->dev;
 	struct sk_buff *skb;
 	unsigned long flags;
@@ -301,8 +272,7 @@ static int audio_pkt_release(struct inode *inode, struct file *file)
 
 	put_device(dev);
 	file->private_data = NULL;
-	q6apm_audio_close_all();
-	msm_audio_mem_crash_handler();
+	audio_close_all();
 
 	return 0;
 }
@@ -321,7 +291,7 @@ static int audio_pkt_release(struct inode *inode, struct file *file)
 static ssize_t audio_pkt_read(struct file *file, char __user *buf,
 		       size_t count, loff_t *ppos)
 {
-	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
+	struct audio_pkt *audpkt_dev = file->private_data;
 	unsigned long flags;
 	struct sk_buff *skb;
 	int use;
@@ -405,11 +375,10 @@ static int audpkt_chk_and_update_physical_addr(struct audio_gpr_pkt *gpr_pkt)
 static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 			size_t count, loff_t *ppos)
 {
-	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
+	struct audio_pkt *audpkt_dev = file->private_data;
 	struct gpr_hdr *audpkt_hdr = NULL;
 	void *kbuf;
 	int ret;
-	struct gpr_port_map *audpkt_port_map;
 
 	if (!audpkt_dev)  {
 		AUDIO_PKT_ERR("invalid device handle\n");
@@ -430,38 +399,13 @@ static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 		}
 	}
 
-	audpkt_port_map = kmalloc(sizeof(*audpkt_port_map), GFP_KERNEL);
-	if (!audpkt_port_map) {
-		AUDIO_PKT_ERR("kmalloc FAILED !!\n");
-		goto free_kbuf;
-	}
-
-	audpkt_port_map->src_port = audpkt_hdr->src_port;
-	audpkt_port_map->dst_port = audpkt_hdr->dest_port;
-
-	mutex_lock(&audpkt_dev->audpkt_port_lock);
-	ret = idr_alloc(&audpkt_dev->audpkt_port_idr, audpkt_port_map,
-			audpkt_hdr->token,
-			audpkt_hdr->token + 1,
-			GFP_KERNEL);
-	mutex_unlock(&audpkt_dev->audpkt_port_lock);
-
-	if (ret < 0) {
-		kfree(audpkt_port_map);
-		AUDIO_PKT_ERR("idr_alloc failed for token=%u\n", audpkt_hdr->token);
-		goto free_kbuf;
-	} else {
-		audpkt_hdr->src_port = GPR_APM_MODULE_IID;
-	}
-
 	if (mutex_lock_interruptible(&audpkt_dev->lock)) {
 		ret = -ERESTARTSYS;
 		goto free_kbuf;
 	}
-	ret = gpr_send_pkt(audpkt_dev->adev, (struct gpr_pkt *) kbuf);
-	if (ret < 0) {
-		AUDIO_PKT_ERR("APR Send Packet Failed ret -%d\n", ret);
-		mutex_unlock(&audpkt_dev->lock);
+	ret = rpmsg_send(audpkt_dev->rpdev->ept, kbuf, count);
+	if (ret) {
+		AUDIO_PKT_ERR("rpmsg_send failed, returned error %d\n", ret);
 		kfree(kbuf);
 		return ret;
 	}
@@ -483,7 +427,7 @@ free_kbuf:
  */
 static unsigned int audio_pkt_poll(struct file *file, poll_table *wait)
 {
-	struct q6apm_audio_pkt *audpkt_dev = file->private_data;
+	struct audio_pkt *audpkt_dev = file->private_data;
 	unsigned int mask = 0;
 	unsigned long flags;
 
@@ -507,7 +451,6 @@ static unsigned int audio_pkt_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
-
 static const struct file_operations audio_pkt_fops = {
 	.owner = THIS_MODULE,
 	.open = audio_pkt_open,
@@ -517,10 +460,10 @@ static const struct file_operations audio_pkt_fops = {
 	.poll = audio_pkt_poll,
 };
 
-static int q6apm_audio_pkt_probe(gpr_device_t *adev)
+static int audio_pkt_probe(struct rpmsg_device *rpdev)
 {
-	struct device *dev = &adev->dev;
-	struct q6apm_audio_pkt *apm;
+	struct device *dev = &rpdev->dev;
+	struct audio_pkt *apm;
 	int ret;
 
 	apm = devm_kzalloc(dev, sizeof(*apm), GFP_KERNEL);
@@ -558,15 +501,11 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 	dev_set_drvdata(dev, apm);
 
 	mutex_init(&apm->lock);
-	apm->adev = adev;
-
+	apm->rpdev = rpdev;
 
 	spin_lock_init(&apm->queue_lock);
 	skb_queue_head_init(&apm->queue);
 	init_waitqueue_head(&apm->readq);
-
-	mutex_init(&apm->audpkt_port_lock);
-	idr_init(&apm->audpkt_port_idr);
 
 	g_apm = apm;
 
@@ -580,8 +519,12 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 		goto free_dev;
 	}
 
-	q6apm_audio_is_adsp_ready();
 	AUDIO_PKT_INFO("Audio Packet Port Driver Initialized\n");
+
+	ret = q6apm_audio_mem_init();
+	if (ret != 0)
+		AUDIO_PKT_ERR("audio_pkt_probe: Failed to initialize audio mem driver\n");
+
 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 
 free_dev:
@@ -596,73 +539,38 @@ err_chrdev:
 	return ret;
 }
 
-/*
- * Generate the kernel-facing wrapper with the correct signature
- * for <=6.19 (non-const) and >=7.0 (const). The wrapper calls
- * q6apm_audio_pkt_callback_core() which always uses 'const'.
- */
-AR_GPR_CB_WRAPPER(q6apm_audio_pkt_callback)
-
-static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *priv, int op)
+static int audio_pkt_callback(struct rpmsg_device *rpdev, void *data, int len,
+									void *priv, u32 src)
 {
-	gpr_device_t *gdev = priv;
-	struct q6apm_audio_pkt *apm = dev_get_drvdata(&gdev->dev);
-	const struct gpr_ibasic_rsp_result_t *result;
-	const struct gpr_hdr *hdr = &data->hdr;
-	struct device *dev = &gdev->dev;
-	uint16_t hdr_size, pkt_size;
+	struct audio_pkt *apm = dev_get_drvdata(&rpdev->dev);
+	struct gpr_resp_pkt *gpr_pkt;
+	uint8_t *pkt = NULL;
+	struct gpr_hdr *hdr = NULL;
 	unsigned long flags;
 	struct sk_buff *skb;
-	struct gpr_port_map *audpkt_port_map;
 
-	u32 new_dest_port = 0, new_src_port = 0;
-	bool remap_ports = false;
+	gpr_pkt = (struct gpr_resp_pkt *)data;
+	hdr = (struct gpr_hdr *)data;
 
-	if (!apm) {
-		dev_dbg(dev, "callback with NULL drvdata\n");
-		return -ENODEV;
-	}
-
-        hdr_size = hdr->hdr_size * 4;
-        pkt_size = hdr->pkt_size;
-
-	mutex_lock(&apm->audpkt_port_lock);
-	audpkt_port_map = idr_find(&apm->audpkt_port_idr, hdr->token);
-	if (audpkt_port_map) {
-		new_dest_port = audpkt_port_map->src_port;
-		new_src_port  = audpkt_port_map->dst_port;
-		remap_ports = true;
-
-		idr_remove(&apm->audpkt_port_idr, hdr->token);
-		kfree(audpkt_port_map);
-	} else {
-		dev_dbg(dev, "Token=%u not found\n", hdr->token);
-	}
-	mutex_unlock(&apm->audpkt_port_lock);
-
-	skb = alloc_skb(pkt_size, GFP_ATOMIC);
-	if (!skb)
+	pkt = kmalloc(len, GFP_KERNEL);
+	if (!pkt)
 		return -ENOMEM;
 
-	skb_put_data(skb, (uint8_t *)data, hdr_size);
-	skb_put_data(skb, (uint8_t *)data->payload, pkt_size - hdr_size);
+	memcpy(pkt, data, len);
 
-	if (remap_ports) {
-		struct gpr_hdr *out_hdr = (struct gpr_hdr *)skb->data;
+	skb = alloc_skb(len, GFP_ATOMIC);
+   if (!skb)
+      return -ENOMEM;
 
-		out_hdr->dest_port = new_dest_port;
-		out_hdr->src_port  = new_src_port;
-	}
+	skb_put_data(skb, (void *)pkt, len);
 
-        spin_lock_irqsave(&apm->queue_lock, flags);
-        skb_queue_tail(&apm->queue, skb);
-        spin_unlock_irqrestore(&apm->queue_lock, flags);
-
+	spin_lock_irqsave(&apm->queue_lock, flags);
+	skb_queue_tail(&apm->queue, skb);
+	spin_unlock_irqrestore(&apm->queue_lock, flags);
 
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&apm->readq);
-	if(hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
-		result = data->payload;
+	if (hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
 		apm->result.opcode = hdr->opcode;
 		apm->result.status = 0;
 		/* First word of result it state */
@@ -672,10 +580,10 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 	return 0;
 }
 
-static void q6apm_audio_pkt_remove(gpr_device_t *adev)
+static void audio_pkt_remove(struct rpmsg_device *rpdev)
 {
-	struct device *dev = &adev->dev;
-	struct q6apm_audio_pkt *apm = dev_get_drvdata(dev);
+	struct device *dev = &rpdev->dev;
+	struct audio_pkt *apm = dev_get_drvdata(dev);
 
 	of_platform_depopulate(dev);
 
@@ -692,33 +600,28 @@ static void q6apm_audio_pkt_remove(gpr_device_t *adev)
 }
 
 #ifdef CONFIG_OF
-static const struct of_device_id q6apm_audio_device_id[]  = {
+static const struct of_device_id audio_device_id[]  = {
 	{ .compatible = "qcom,q6apm" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, q6apm_audio_device_id);
+MODULE_DEVICE_TABLE(of, audio_device_id);
 #endif
 
-static gpr_driver_t apm_driver = {
-	.probe = q6apm_audio_pkt_probe,
-	.remove = q6apm_audio_pkt_remove,
-	.gpr_callback = q6apm_audio_pkt_callback,
-	.driver = {
-		.name = "qcom-apm-audio-pkt",
-		.of_match_table = of_match_ptr(q6apm_audio_device_id),
-	},
+static struct rpmsg_device_id audioreach_rpmsg_driver_id_table[] = {
+	{ .name	= "audioreach-rpmsg" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, audioreach_rpmsg_driver_id_table);
+
+static struct rpmsg_driver audioreach_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.id_table	= audioreach_rpmsg_driver_id_table,
+	.probe		= audio_pkt_probe,
+	.callback	= audio_pkt_callback,
+	.remove		= audio_pkt_remove,
 };
 
-//module_gpr_driver(apm_driver);
-int q6apm_audio_pkt_init(void)
-{
-	    return apr_driver_register(&apm_driver);;//gpr_driver_register(&apm_driver);
-}
-
-void q6apm_audio_pkt_exit(void)
-{
-	apr_driver_unregister(&apm_driver);
-//	    gpr_driver_unregister(&apm_driver);
-}
-MODULE_DESCRIPTION("Audio Process Manager");
+module_rpmsg_driver(audioreach_rpmsg);
+MODULE_DESCRIPTION("Audio Packet Driver");
 MODULE_LICENSE("GPL");
+//MODULE_IMPORT_NS("DMA_BUF");

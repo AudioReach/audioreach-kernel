@@ -28,6 +28,7 @@
 #include <linux/msm_audio.h>
 #include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
+#include <linux/version.h>
 
 #define DRV_NAME "q6apm-audio-mem"
 
@@ -39,6 +40,13 @@
 #define MSM_AUDIO_SMMU_SID_OFFSET 32
 #define MINOR_NUMBER_COUNT 1
 #define QCOM_SMMU_SID_MASK 0xF
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+	#define AR_USE_VOID_RETURN_TYPE 1
+#else
+	#define AR_USE_VOID_RETURN_TYPE 0
+#endif
+
 
 struct msm_audio_mem_private {
 	bool smmu_enabled;
@@ -430,6 +438,7 @@ int msm_audio_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len)
 	return status;
 }
 
+#ifdef QCOM_HYP_ASSIGN
 static int msm_audio_set_hyp_assign(int fd, bool assign)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
@@ -449,6 +458,7 @@ static int msm_audio_set_hyp_assign(int fd, bool assign)
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
 	return status;
 }
+#endif
 
 static void msm_audio_get_handle(int fd, void **handle)
 {
@@ -551,6 +561,7 @@ static int msm_audio_mem_free(struct dma_buf *dma_buf, struct msm_audio_mem_priv
 	return 0;
 }
 
+#ifdef QCOM_HYP_ASSIGN
 static int msm_audio_hyp_unassign(struct msm_audio_fd_data *msm_audio_fd_data)
 {
 	int ret = 0;
@@ -569,6 +580,7 @@ static int msm_audio_hyp_unassign(struct msm_audio_fd_data *msm_audio_fd_data)
 	}
 	return ret;
 }
+#endif
 
 /**
  * msm_audio_mem_crash_handler -
@@ -589,8 +601,10 @@ void msm_audio_mem_crash_handler(void)
 		handle = msm_audio_fd_data->handle;
 		mem_data = dev_get_drvdata(msm_audio_fd_data->dev);
 		/*  clean if CMA was used*/
+#ifdef QCOM_HYP_ASSIGN
 		if (msm_audio_fd_data->hyp_assign)
 			msm_audio_hyp_unassign(msm_audio_fd_data);
+#endif
 		if (handle)
 			msm_audio_mem_free(handle, mem_data);
 	}
@@ -679,6 +693,7 @@ static long msm_audio_mem_ioctl(struct file *file, unsigned int ioctl_num,
 		}
 		msm_audio_delete_fd_entry(mem_handle);
 		break;
+#ifdef QCOM_HYP_ASSIGN
 	case IOCTL_MAP_HYP_ASSIGN:
 		ret = msm_audio_get_phy_addr((int)ioctl_param, &paddr, &pa_len);
 		if (ret < 0) {
@@ -711,6 +726,7 @@ static long msm_audio_mem_ioctl(struct file *file, unsigned int ioctl_num,
 		pr_debug("%s: qcom scm unassign success\n", __func__);
 		msm_audio_set_hyp_assign((int)ioctl_param, false);
 		break;
+#endif
 	default:
 		pr_err_ratelimited("%s Entered default. Invalid ioctl num %u\n",
 				   __func__, ioctl_num);
@@ -860,6 +876,7 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if AR_USE_VOID_RETURN_TYPE
 static void q6apm_audio_mem_remove(struct platform_device *pdev)
 {
 	struct msm_audio_mem_private *mem_data = dev_get_drvdata(&pdev->dev);
@@ -868,6 +885,17 @@ static void q6apm_audio_mem_remove(struct platform_device *pdev)
 	mem_data->device_status = 0;
 	msm_audio_mem_unreg_chrdev(mem_data);
 }
+#else
+static int q6apm_audio_mem_remove(struct platform_device *pdev)
+{
+	struct msm_audio_mem_private *mem_data = dev_get_drvdata(&pdev->dev);
+
+	mem_data->smmu_enabled = false;
+	mem_data->device_status = 0;
+	msm_audio_mem_unreg_chrdev(mem_data);
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_OF
 static const struct of_device_id q6apm_audio_mem_device_id[] = {
