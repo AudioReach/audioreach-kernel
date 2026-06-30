@@ -4,10 +4,13 @@
 
 #include <dt-bindings/sound/qcom,q6afe.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/string.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
+#include <sound/pcm_params.h>
 #include <linux/soundwire/sdw.h>
 #include <sound/jack.h>
 #include <linux/input-event-codes.h>
@@ -16,6 +19,8 @@
 
 #define AFE_PORT_MAX   137
 #define NAME_SIZE	32
+#define SHIKRA_IQS_MCLK_RATE	12288000
+#define SHIKRA_CQS_BCLK_RATE	3072000
 
 struct qcs6490_snd_data {
 	bool stream_prepared[AFE_PORT_MAX];
@@ -36,6 +41,34 @@ struct qcom_snd_common_data {
 	struct qcom_snd_dailink_data *link_data;
 };
 
+static bool qcs6490_snd_model_is(struct snd_soc_card *card, const char *model)
+{
+	const char *card_model;
+
+	if (of_property_read_string(card->dev->of_node, "model", &card_model))
+		return false;
+
+	return !strcmp(card_model, model);
+}
+
+static bool qcs6490_snd_is_shikra_cqm(struct snd_soc_card *card)
+{
+	return of_device_is_compatible(card->dev->of_node, "qcom,shikra-cqm-sndcard") ||
+		qcs6490_snd_model_is(card, "shikra-cqm-evk");
+}
+
+static bool qcs6490_snd_is_shikra_cqs(struct snd_soc_card *card)
+{
+	return of_device_is_compatible(card->dev->of_node, "qcom,shikra-cqs-sndcard") ||
+		qcs6490_snd_model_is(card, "shikra-cqs-evk");
+}
+
+static bool qcs6490_snd_is_shikra_iqs(struct snd_soc_card *card)
+{
+	return of_device_is_compatible(card->dev->of_node, "qcom,shikra-iqs-sndcard") ||
+		qcs6490_snd_model_is(card, "shikra-iqs-evk");
+}
+
 static const struct snd_soc_dapm_widget qcom_jack_snd_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
@@ -49,6 +82,24 @@ static const struct snd_soc_dapm_widget qcom_jack_snd_widgets[] = {
 	SND_SOC_DAPM_SPK("DP7 Jack", NULL),
 };
 
+static struct snd_soc_dapm_widget shikra_cqm_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+};
+
+static const struct snd_soc_dapm_widget shikra_iqs_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Int Mic", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+};
+
+static const struct snd_kcontrol_new shikra_iqs_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headset Mic"),
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Int Mic"),
+	SOC_DAPM_PIN_SWITCH("Speaker"),
+};
 
 static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 	/* Headset */
@@ -62,6 +113,23 @@ static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 	},
 };
 
+static bool qcs6490_snd_is_sdw_dai(int dai_id)
+{
+	switch (dai_id) {
+	case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_RX_1:
+	case RX_CODEC_DMA_RX_0:
+	case RX_CODEC_DMA_RX_1:
+	case TX_CODEC_DMA_TX_0:
+	case TX_CODEC_DMA_TX_1:
+	case TX_CODEC_DMA_TX_2:
+	case TX_CODEC_DMA_TX_3:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static int qcs6490_snd_sdw_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
@@ -71,6 +139,9 @@ static int qcs6490_snd_sdw_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *codec_dai;
 	u32 rx_ch_cnt = 0, tx_ch_cnt = 0;
 	int ret, i, j;
+
+	if (!qcs6490_snd_is_sdw_dai(cpu_dai->id))
+		return 0;
 
 	sruntime = sdw_alloc_stream(cpu_dai->name, SDW_STREAM_PCM);
 	if (!sruntime)
@@ -260,8 +331,12 @@ static void qcs6490_snd_shutdown(struct snd_pcm_substream *substream)
 		break;
 	}
 
+	if (!qcs6490_snd_is_sdw_dai(cpu_dai->id))
+		return;
+
 	pdata->sruntime[cpu_dai->id] = NULL;
-	sdw_release_stream(sruntime);
+	if (sruntime)
+		sdw_release_stream(sruntime);
 }
 
 static int qcs6490_snd_dp_jack_setup(struct snd_soc_pcm_runtime *rtd,
@@ -480,6 +555,7 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 		}
 
 		cpu = of_get_child_by_name(np, "cpu");
+		platform = of_get_child_by_name(np, "platform");
 		codec = of_get_child_by_name(np, "codec");
 
 		if (!cpu) {
@@ -496,7 +572,18 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 		}
 
 		link->id = args.args[0];	
-		link->platforms->of_node = link->cpus->of_node;
+		if (platform) {
+			link->platforms->of_node = of_parse_phandle(platform,
+							     "sound-dai", 0);
+			if (!link->platforms->of_node) {
+				dev_err(card->dev, "%s: platform dai not found\n",
+					link->name);
+				ret = -EINVAL;
+				goto err;
+			}
+		} else {
+			link->platforms->of_node = link->cpus->of_node;
+		}
 
 		if (codec) {
 			ret = snd_soc_of_get_dai_link_codecs(dev, codec, link);
@@ -585,6 +672,9 @@ static int qcs6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 	if (dp_jack)
 		return qcs6490_snd_dp_jack_setup(rtd, dp_jack, dp_pcm_id);
 
+	if (qcs6490_snd_is_shikra_cqs(card) || qcs6490_snd_is_shikra_iqs(card))
+		return 0;
+
 	return qcs6490_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
 }
 
@@ -615,12 +705,81 @@ static int qcs6490_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+static int qcs6490_snd_set_codec_sysclk(struct snd_soc_pcm_runtime *rtd,
+						unsigned int freq)
+{
+	struct snd_soc_dai *codec_dai;
+	int ret;
+	int i;
+
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+		ret = snd_soc_dai_set_sysclk(codec_dai, 0, freq,
+					       SND_SOC_CLOCK_IN);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int qcs6490_snd_set_iqs_codec_fmt(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_dai *codec_dai;
+	unsigned int fmt = SND_SOC_DAIFMT_CBP_CFP | SND_SOC_DAIFMT_NB_NF |
+			   SND_SOC_DAIFMT_I2S;
+	int ret;
+	int i;
+
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+		ret = snd_soc_dai_set_fmt(codec_dai, fmt);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct qcs6490_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
+	int bclk_freq;
+	int ret;
+
+	if (qcs6490_snd_is_shikra_iqs(rtd->card) &&
+	    (cpu_dai->id == PRIMARY_MI2S_RX || cpu_dai->id == PRIMARY_MI2S_TX)) {
+		ret = qcs6490_snd_set_iqs_codec_fmt(rtd);
+		if (ret)
+			return ret;
+
+		ret = qcs6490_snd_set_codec_sysclk(rtd, SHIKRA_IQS_MCLK_RATE);
+		if (ret)
+			return ret;
+
+		bclk_freq = snd_soc_params_to_bclk(params);
+		if (bclk_freq <= 0)
+			return -EINVAL;
+
+		ret = snd_soc_dai_set_sysclk(cpu_dai, LPAIF_MI2S_BCLK,
+					       bclk_freq, SND_SOC_CLOCK_IN);
+		if (ret)
+			return ret;
+	}
+
+	if (qcs6490_snd_is_shikra_cqs(rtd->card) &&
+	    cpu_dai->id == SECONDARY_TDM_RX_0) {
+		ret = snd_soc_dai_set_sysclk(cpu_dai, LPAIF_MI2S_BCLK,
+					       SHIKRA_CQS_BCLK_RATE,
+					       SND_SOC_CLOCK_IN);
+		if (ret)
+			return ret;
+
+		ret = qcs6490_snd_set_codec_sysclk(rtd, SHIKRA_CQS_BCLK_RATE);
+		if (ret)
+			return ret;
+	}
 
 	return qcs6490_snd_sdw_hw_params(substream, params, &pdata->sruntime[cpu_dai->id]);
 }
@@ -667,6 +826,19 @@ static void qcs6490_add_be_ops(struct snd_soc_card *card)
 	}
 }
 
+static void qcs6490_add_shikra_card_data(struct snd_soc_card *card)
+{
+	if (qcs6490_snd_is_shikra_cqm(card) || qcs6490_snd_is_shikra_cqs(card)) {
+		card->dapm_widgets = shikra_cqm_dapm_widgets;
+		card->num_dapm_widgets = ARRAY_SIZE(shikra_cqm_dapm_widgets);
+	} else if (qcs6490_snd_is_shikra_iqs(card)) {
+		card->dapm_widgets = shikra_iqs_dapm_widgets;
+		card->num_dapm_widgets = ARRAY_SIZE(shikra_iqs_dapm_widgets);
+		card->controls = shikra_iqs_controls;
+		card->num_controls = ARRAY_SIZE(shikra_iqs_controls);
+	}
+}
+
 static int qcs6490_platform_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card;
@@ -686,6 +858,7 @@ static int qcs6490_platform_probe(struct platform_device *pdev)
 	card->dev = dev;
 	dev_set_drvdata(dev, card);
 	snd_soc_card_set_drvdata(card, data);
+	qcs6490_add_shikra_card_data(card);
 	ret = qcs6490_snd_parse_of(card);
 	if (ret)
 		return ret;
@@ -699,6 +872,10 @@ static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,qcm6490-idp-sndcard", "qcm6490"},
 	{.compatible = "qcom,qcs615-sndcard", "qcs615"},
 	{.compatible = "qcom,qcs6490-rb3gen2-sndcard", "qcs6490"},
+	{.compatible = "qcom,shikra-sndcard", "shikra"},
+	{.compatible = "qcom,shikra-cqm-sndcard", "shikra"},
+	{.compatible = "qcom,shikra-cqs-sndcard", "shikra"},
+	{.compatible = "qcom,shikra-iqs-sndcard", "shikra"},
 	{.compatible = "qcom,qcs8275-sndcard", "qcs8275"},
 	{.compatible = "qcom,qcs8300-sndcard", "qcs8300"},
 	{.compatible = "qcom,qcs9075-sndcard", "qcs9075"},

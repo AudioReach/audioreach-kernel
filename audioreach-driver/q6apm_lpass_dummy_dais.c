@@ -8,6 +8,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <sound/pcm.h>
@@ -19,6 +20,15 @@
 
 #define APM_PORT_MAX	127
 #define AUDIOREACH_BE_PCM_BASE	16
+
+struct q6apm_dai_priv_data {
+	struct clk *mclk;
+	struct clk *bclk;
+	struct clk *eclk;
+	bool mclk_enabled;
+	bool bclk_enabled;
+	bool eclk_enabled;
+};
 
 #define Q6AFE_TDM_PB_DAI(pre, num, did) {				\
 		.playback = {						\
@@ -613,6 +623,7 @@ struct q6apm_lpass_dai_data {
 	struct q6apm_graph *graph[APM_PORT_MAX];
 	bool is_port_started[APM_PORT_MAX];
 	struct audioreach_module_config module_config[APM_PORT_MAX];
+	struct q6apm_dai_priv_data priv[APM_PORT_MAX];
 };
 
 static const struct snd_pcm_hardware q6apm_dummy_dma_hardware = {
@@ -692,16 +703,121 @@ static int q6apm_lpass_dai_dummy_startup(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static void q6apm_lpass_dai_dummy_shutdown(struct snd_pcm_substream *substream,
+					   struct snd_soc_dai *dai)
+{
+	struct q6apm_lpass_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	struct q6apm_dai_priv_data *priv;
+
+	if (dai->id >= APM_PORT_MAX)
+		return;
+
+	priv = &dai_data->priv[dai->id];
+
+	if (priv->mclk_enabled) {
+		clk_disable_unprepare(priv->mclk);
+		priv->mclk_enabled = false;
+	}
+
+	if (priv->bclk_enabled) {
+		clk_disable_unprepare(priv->bclk);
+		priv->bclk_enabled = false;
+	}
+
+	if (priv->eclk_enabled) {
+		clk_disable_unprepare(priv->eclk);
+		priv->eclk_enabled = false;
+	}
+}
+
+static int q6apm_lpass_dai_dummy_set_sysclk(struct snd_soc_dai *dai,
+						    int clk_id, unsigned int freq,
+						    int dir)
+{
+	struct q6apm_lpass_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	struct q6apm_dai_priv_data *priv;
+	struct clk *sysclk;
+	bool *enabled;
+	int ret;
+
+	if (dai->id >= APM_PORT_MAX)
+		return -EINVAL;
+
+	priv = &dai_data->priv[dai->id];
+
+	switch (clk_id) {
+	case LPAIF_MI2S_MCLK:
+		sysclk = priv->mclk;
+		enabled = &priv->mclk_enabled;
+		break;
+	case LPAIF_MI2S_BCLK:
+		sysclk = priv->bclk;
+		enabled = &priv->bclk_enabled;
+		break;
+	case LPAIF_MI2S_ECLK:
+		sysclk = priv->eclk;
+		enabled = &priv->eclk_enabled;
+		break;
+	default:
+		return 0;
+	}
+
+	if (!sysclk)
+		return 0;
+
+	if (!freq) {
+		if (*enabled) {
+			clk_disable_unprepare(sysclk);
+			*enabled = false;
+		}
+		return 0;
+	}
+
+	ret = clk_set_rate(sysclk, freq);
+	if (ret)
+		return ret;
+
+	if (*enabled)
+		return 0;
+
+	ret = clk_prepare_enable(sysclk);
+	if (ret)
+		return ret;
+
+	*enabled = true;
+
+	return 0;
+}
+
+static int q6apm_lpass_dai_get_clk(struct device *dev, struct device_node *np,
+					   const char *name, struct clk **clk)
+{
+	*clk = devm_get_clk_from_child(dev, np, name);
+	if (IS_ERR(*clk)) {
+		if (PTR_ERR(*clk) == -EPROBE_DEFER)
+			return dev_err_probe(dev, PTR_ERR(*clk),
+					     "unable to get %s\n", name);
+
+		*clk = NULL;
+	}
+
+	return 0;
+}
+
 static const struct snd_soc_dai_ops q6dummy_ops = {
 	.startup	= q6apm_lpass_dai_dummy_startup,
 };
 
 static const struct snd_soc_dai_ops q6i2sdummy_ops = {
 	.startup	= q6apm_lpass_dai_dummy_startup,
+	.shutdown	= q6apm_lpass_dai_dummy_shutdown,
+	.set_sysclk	= q6apm_lpass_dai_dummy_set_sysclk,
 };
 
 static const struct snd_soc_dai_ops q6tdmdummy_ops = {
 	.startup	= q6apm_lpass_dai_dummy_startup,
+	.shutdown	= q6apm_lpass_dai_dummy_shutdown,
+	.set_sysclk	= q6apm_lpass_dai_dummy_set_sysclk,
 };
 
 static const struct snd_soc_component_driver q6apm_lpass_dummy_dai_component = {
@@ -718,11 +834,45 @@ static int q6apm_lpass_dummy_dai_dev_probe(struct platform_device *pdev)
 	struct q6apm_lpass_dai_data *dai_data;
 	struct snd_soc_dai_driver *dais;
 	struct device *dev = &pdev->dev;
+	struct device_node *np;
 	int num_dais;
+	int ret;
 
 	dai_data = devm_kzalloc(dev, sizeof(*dai_data), GFP_KERNEL);
 	if (!dai_data)
 		return -ENOMEM;
+
+	for_each_available_child_of_node(dev->of_node, np) {
+		struct q6apm_dai_priv_data *priv;
+		u32 id;
+
+		ret = of_property_read_u32(np, "reg", &id);
+		if (ret || id >= APM_PORT_MAX)
+			continue;
+
+		switch (id) {
+		case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
+		case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
+		case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
+			break;
+		default:
+			continue;
+		}
+
+		priv = &dai_data->priv[id];
+
+		ret = q6apm_lpass_dai_get_clk(dev, np, "mclk", &priv->mclk);
+		if (ret)
+			goto err_put_np;
+
+		ret = q6apm_lpass_dai_get_clk(dev, np, "bclk", &priv->bclk);
+		if (ret)
+			goto err_put_np;
+
+		ret = q6apm_lpass_dai_get_clk(dev, np, "eclk", &priv->eclk);
+		if (ret)
+			goto err_put_np;
+	}
 
 	dev_set_drvdata(dev, dai_data);
 
@@ -739,6 +889,10 @@ static int q6apm_lpass_dummy_dai_dev_probe(struct platform_device *pdev)
 	dais = q6dsp_audio_ports_set_config(dev, &cfg, &num_dais);
 
 	return devm_snd_soc_register_component(dev, q6apm_lpass_component, dais, num_dais);
+
+err_put_np:
+	of_node_put(np);
+	return ret;
 }
 
 #ifdef CONFIG_OF
