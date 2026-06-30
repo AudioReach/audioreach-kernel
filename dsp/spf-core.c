@@ -36,6 +36,11 @@ struct spf_core_private {
 	struct work_struct add_chld_dev_work;
 };
 
+static inline u16 spf_core_gpr_dest_domain(gpr_device_t *gdev)
+{
+	return gdev && gdev->domain_id ? gdev->domain_id : GPR_DOMAIN_ID_ADSP;
+}
+
 static struct spf_core_private *spf_core_priv;
 struct apm_cmd_rsp_get_spf_status_t
 
@@ -93,7 +98,7 @@ static bool __spf_core_is_apm_ready(struct spf_core *core)
 	pkt.hdr.opcode = APM_CMD_GET_SPF_STATE;
 	pkt.hdr.dest_port = APM_MODULE_INSTANCE_ID;
 	pkt.hdr.src_port = adev->svc_id; //1
-	pkt.hdr.dest_domain = GPR_DOMAIN_ID_ADSP;
+	pkt.hdr.dest_domain = spf_core_gpr_dest_domain(adev);
 	pkt.hdr.src_domain = GPR_DOMAIN_ID_APPS;
 	pkt.hdr.opcode = APM_CMD_GET_SPF_STATE;
 

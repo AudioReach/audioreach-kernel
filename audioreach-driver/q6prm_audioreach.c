@@ -106,7 +106,8 @@ static int q6prm_audioreach_send_cmd_sync(struct q6prm *prm, struct gpr_pkt *pkt
 }
 
 static void *__q6prm_audioreach_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
-				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
+				    uint32_t src_port, uint32_t dest_port,
+				    uint16_t dest_domain, bool has_cmd_hdr)
 {
 	struct gpr_pkt *pkt;
 	void *p;
@@ -126,7 +127,7 @@ static void *__q6prm_audioreach_alloc_pkt(int payload_size, uint32_t opcode, uin
 	pkt->hdr.dest_port = dest_port;
 	pkt->hdr.src_port = src_port;
 
-	pkt->hdr.dest_domain = GPR_DOMAIN_ID_ADSP;
+	pkt->hdr.dest_domain = dest_domain ?: GPR_DOMAIN_ID_ADSP;
 	pkt->hdr.src_domain = GPR_DOMAIN_ID_APPS;
 	pkt->hdr.token = token;
 	pkt->hdr.opcode = opcode;
@@ -142,10 +143,12 @@ static void *__q6prm_audioreach_alloc_pkt(int payload_size, uint32_t opcode, uin
 	return pkt;
 }
 
-static void *q6prm_audioreach_alloc_cmd_pkt(int payload_size, uint32_t opcode, uint32_t token,
-			       uint32_t src_port, uint32_t dest_port)
+static void *q6prm_audioreach_alloc_cmd_pkt(gpr_device_t *gdev, int payload_size,
+			       uint32_t opcode, uint32_t token, uint32_t src_port,
+			       uint32_t dest_port)
 {
-	return __q6prm_audioreach_alloc_pkt(payload_size, opcode, token, src_port, dest_port, true);
+	return __q6prm_audioreach_alloc_pkt(payload_size, opcode, token, src_port,
+				       dest_port, audioreach_gpr_dest_domain(gdev), true);
 }
 
 static int q6prm_audioreach_set_hw_core_req(struct device *dev, uint32_t hw_block_id, bool enable)
@@ -166,7 +169,8 @@ static int q6prm_audioreach_set_hw_core_req(struct device *dev, uint32_t hw_bloc
 		rsp_opcode = PRM_CMD_RSP_RELEASE_HW_RSC;
 	}
 
-	pkt = q6prm_audioreach_alloc_cmd_pkt(sizeof(*req), opcode, 0, gdev->svc.id, GPR_PRM_MODULE_IID);
+	pkt = q6prm_audioreach_alloc_cmd_pkt(gdev, sizeof(*req), opcode, 0,
+				       gdev->svc.id, GPR_PRM_MODULE_IID);
 	if (IS_ERR(pkt))
 		return PTR_ERR(pkt);
 
@@ -214,7 +218,7 @@ static int q6prm_audioreach_request_lpass_clock(struct device *dev, int clk_id, 
 	struct gpr_pkt *pkt;
 	int rc;
 
-	pkt = q6prm_audioreach_alloc_cmd_pkt(sizeof(*req), PRM_CMD_REQUEST_HW_RSC, 0, gdev->svc.id,
+	pkt = q6prm_audioreach_alloc_cmd_pkt(gdev, sizeof(*req), PRM_CMD_REQUEST_HW_RSC, 0, gdev->svc.id,
 				       GPR_PRM_MODULE_IID);
 	if (IS_ERR(pkt))
 		return PTR_ERR(pkt);
@@ -251,7 +255,7 @@ static int q6prm_audioreach_release_lpass_clock(struct device *dev, int clk_id, 
 	struct gpr_pkt *pkt;
 	int rc;
 
-	pkt = q6prm_audioreach_alloc_cmd_pkt(sizeof(*rel), PRM_CMD_RELEASE_HW_RSC, 0, gdev->svc.id,
+	pkt = q6prm_audioreach_alloc_cmd_pkt(gdev, sizeof(*rel), PRM_CMD_RELEASE_HW_RSC, 0, gdev->svc.id,
 				       GPR_PRM_MODULE_IID);
 	if (IS_ERR(pkt))
 		return PTR_ERR(pkt);

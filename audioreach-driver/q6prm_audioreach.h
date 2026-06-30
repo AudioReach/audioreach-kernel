@@ -4,7 +4,9 @@
 #ifndef __Q6PRM_AUDIOREACH_H__
 #define __Q6PRM_AUDIOREACH_H__
 
+#include <dt-bindings/soc/qcom,gpr.h>
 #include <linux/dma-mapping.h>
+#include <linux/soc/qcom/apr.h>
 
 /* Clock ID for Primary I2S IBIT */
 #define Q6PRM_LPASS_CLK_ID_PRI_MI2S_IBIT                          0x100
@@ -194,6 +196,11 @@ struct q6dsp_clk_desc {
 	int (*lpass_vote_clk)(struct device *dev, uint32_t hid, const char *n, uint32_t *h);
 	int (*lpass_unvote_clk)(struct device *dev, uint32_t hid, uint32_t h);
 };
+
+static inline u16 audioreach_gpr_dest_domain(gpr_device_t *gdev)
+{
+	return gdev && gdev->domain_id ? gdev->domain_id : GPR_DOMAIN_ID_ADSP;
+}
 
 int q6dsp_clock_dev_probe(struct platform_device *pdev);
 

@@ -181,7 +181,8 @@ static int q6apm_audio_send_cmd(struct q6apm_audio_pkt *apm, struct gpr_pkt *pkt
 }
 
 static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
-				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
+				    uint32_t src_port, uint32_t dest_port,
+				    uint16_t dest_domain, bool has_cmd_hdr)
 {
 	struct gpr_pkt *pkt;
 	void *p;
@@ -201,7 +202,7 @@ static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t
 	pkt->hdr.dest_port = dest_port;
 	pkt->hdr.src_port = src_port;
 
-	pkt->hdr.dest_domain = GPR_DOMAIN_ID_ADSP;
+	pkt->hdr.dest_domain = dest_domain ?: GPR_DOMAIN_ID_ADSP;
 	pkt->hdr.src_domain = GPR_DOMAIN_ID_APPS;
 	pkt->hdr.token = token;
 	pkt->hdr.opcode = opcode;
@@ -217,17 +218,21 @@ static void *__q6apm_audio_alloc_pkt(int payload_size, uint32_t opcode, uint32_t
 	return pkt;
 }
 
-static void *q6apm_audio_alloc_apm_cmd_pkt(int pkt_size, uint32_t opcode, uint32_t token)
+static void *q6apm_audio_alloc_apm_cmd_pkt(struct q6apm_audio_pkt *apm,
+						   int pkt_size, uint32_t opcode,
+						   uint32_t token)
 {
 	return __q6apm_audio_alloc_pkt(pkt_size, opcode, token, GPR_APM_MODULE_IID,
-				       APM_MODULE_INSTANCE_ID, true);
+				       APM_MODULE_INSTANCE_ID,
+				       audioreach_gpr_dest_domain(apm ? apm->adev : NULL),
+				       true);
 }
 
 static int q6apm_audio_get_apm_state(struct q6apm_audio_pkt *apm)
 {
 	struct gpr_pkt *pkt;
 
-	pkt = q6apm_audio_alloc_apm_cmd_pkt(0, APM_CMD_GET_SPF_STATE, 0);
+	pkt = q6apm_audio_alloc_apm_cmd_pkt(apm, 0, APM_CMD_GET_SPF_STATE, 0);
 	if (IS_ERR(pkt))
 		return PTR_ERR(pkt);
 
@@ -250,7 +255,7 @@ static void q6apm_audio_close_all(void)
 {
 	struct gpr_pkt *pkt;
 
-	pkt = q6apm_audio_alloc_apm_cmd_pkt(0, APM_CMD_CLOSE_ALL, 0);
+	pkt = q6apm_audio_alloc_apm_cmd_pkt(g_apm, 0, APM_CMD_CLOSE_ALL, 0);
 	if (IS_ERR(pkt))
 		return;
 
