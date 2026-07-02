@@ -1,0 +1,94 @@
+name: trigger_lava_on_success
+
+on:
+  workflow_run:
+    workflows: ["pre_merge_build"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  prepare_matrix:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      test_matrix: ${{ steps.matrix.outputs.test_matrix }}
+      build_urls: ${{ steps.read_url.outputs.build_urls }}
+
+    steps:
+      - name: Download test matrix artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-matrix
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download presigned URL artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: presigned_url_*.txt
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: presigned_urls
+          merge-multiple: true
+
+      - name: Read presigned URLs
+        id: read_url
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const baseDir = 'presigned_urls'
+            const entries = fs.readdirSync(baseDir)
+
+            console.log('Entries:', entries)
+
+            if (entries.length === 0) {
+              throw new Error('No presigned URL files found')
+            }
+
+            const urls = {}
+
+            for (const entry of entries) {
+              const fullPath = path.join(baseDir, entry)
+              if (fs.statSync(fullPath).isFile()) {
+                const content = fs.readFileSync(fullPath, 'utf8').trim()
+                urls[entry] = content
+                console.log(`Loaded ${entry}: ${content}`)
+              }
+            }
+
+            if (Object.keys(urls).length === 0) {
+              throw new Error('No valid presigned URL files found')
+            }
+
+            core.setOutput('build_urls', JSON.stringify(urls))
+
+      - name: Re-upload presigned URL artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: presigned_urls
+          path: presigned_urls
+
+      - name: Read matrix JSON
+        id: matrix
+        shell: bash
+        run: |
+          test -f test_matrix.json
+          MATRIX=$(cat test_matrix.json)
+          echo "test_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  trigger_lava:
+    needs: prepare_matrix
+    uses: Audioreach/audioreach-workflows/.github/workflows/test.yml@ci
+    secrets: inherit
+    with:
+      build_matrix: ${{ needs.prepare_matrix.outputs.test_matrix }}
+      build_urls: ${{ needs.prepare_matrix.outputs.build_urls }}
