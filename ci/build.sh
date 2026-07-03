@@ -13,6 +13,7 @@ if [ -z "${BUILD_ARGS:-}" ]; then
 fi
 
 
+
 echo "Running build script..."
 # Build/Compile audioreach-kernel
 source ${GITHUB_WORKSPACE}/install/environment-setup-armv8-2a-qcom-linux
