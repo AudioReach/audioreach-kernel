@@ -31,6 +31,10 @@
 #include "q6prm_audioreach.h"
 #include <linux/version.h>
 
+int  q6apm_audio_mem_cma_init(void);
+void q6apm_audio_mem_cma_exit(void);
+int  msm_audio_cma_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len);
+
 #define DRV_NAME "q6apm-audio-mem"
 
 #define MSM_AUDIO_MEM_PROBED (1 << 0)
@@ -57,6 +61,7 @@ struct msm_audio_mem_private {
 	struct mutex list_mutex;
 	u64 smmu_sid_bits;
 	char *driver_name;
+	struct platform_device *cma_pdev;
 	/*char dev related data */
 	dev_t mem_major;
 	struct class *mem_class;
@@ -436,6 +441,11 @@ int msm_audio_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len)
 		}
 	}
 	mutex_unlock(&(msm_audio_mem_fd_list.list_mutex));
+
+	/* fd not found in SMMU list — check CMA driver's fd-list */
+	if (status)
+		status = msm_audio_cma_get_phy_addr(fd, paddr, pa_len);
+
 	return status;
 }
 
@@ -874,6 +884,21 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	}
 	
 	devm_snd_soc_register_component(dev, &q6apm_audio_mem_component, NULL, 0);
+
+	/* Spawn the CMA child driver only if DT has a memory-region property */
+	if (of_find_property(dev->of_node, "memory-region", NULL)) {
+		msm_audio_mem_data->cma_pdev =
+			platform_device_register_data(dev, "q6apm-audio-mem-cma",
+						      PLATFORM_DEVID_NONE, NULL, 0);
+		if (IS_ERR(msm_audio_mem_data->cma_pdev)) {
+			dev_err(dev, "%s: CMA child pdev register failed rc=%ld\n",
+				__func__, PTR_ERR(msm_audio_mem_data->cma_pdev));
+			msm_audio_mem_data->cma_pdev = NULL;
+		}
+	} else {
+		dev_info(dev, "%s: no memory-region, CMA driver not spawned\n", __func__);
+	}
+
 	return 0;
 }
 
@@ -882,6 +907,8 @@ static void q6apm_audio_mem_remove(struct platform_device *pdev)
 {
 	struct msm_audio_mem_private *mem_data = dev_get_drvdata(&pdev->dev);
 
+	if (mem_data->cma_pdev)
+		platform_device_unregister(mem_data->cma_pdev);
 	mem_data->smmu_enabled = false;
 	mem_data->device_status = 0;
 	msm_audio_mem_unreg_chrdev(mem_data);
@@ -891,6 +918,8 @@ static int q6apm_audio_mem_remove(struct platform_device *pdev)
 {
 	struct msm_audio_mem_private *mem_data = dev_get_drvdata(&pdev->dev);
 
+	if (mem_data->cma_pdev)
+		platform_device_unregister(mem_data->cma_pdev);
 	mem_data->smmu_enabled = false;
 	mem_data->device_status = 0;
 	msm_audio_mem_unreg_chrdev(mem_data);
@@ -919,12 +948,25 @@ static struct platform_driver q6apm_audio_mem_platform_driver = {
 
 int q6apm_audio_mem_init(void)
 {
-	    return platform_driver_register(&q6apm_audio_mem_platform_driver);
+	int ret;
+
+	ret = q6apm_audio_mem_cma_init();
+	if (ret) {
+		pr_err("%s: CMA driver register failed ret=%d\n", __func__, ret);
+		return ret;
+	}
+	ret = platform_driver_register(&q6apm_audio_mem_platform_driver);
+	if (ret) {
+		pr_err("%s: SMMU driver register failed ret=%d\n", __func__, ret);
+		q6apm_audio_mem_cma_exit();
+	}
+	return ret;
 }
 
 void q6apm_audio_mem_exit(void)
 {
-	    platform_driver_unregister(&q6apm_audio_mem_platform_driver);
+	platform_driver_unregister(&q6apm_audio_mem_platform_driver);
+	q6apm_audio_mem_cma_exit();
 }
 
 MODULE_DESCRIPTION("Q6APM audio mem driver");

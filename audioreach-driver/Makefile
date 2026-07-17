@@ -1,6 +1,6 @@
 obj-m += audioreach_driver.o
 
-audioreach_driver-objs = q6apm_audio_mem.o
+audioreach_driver-objs = q6apm_audio_mem.o q6apm_audio_mem_cma.o
 
 ifdef VENDOR_QCOM
 	audioreach_driver-objs += q6apm_lpass_dummy_dais.o
