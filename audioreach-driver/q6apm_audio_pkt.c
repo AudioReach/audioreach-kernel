@@ -580,7 +580,6 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 		goto free_dev;
 	}
 
-	q6apm_audio_is_adsp_ready();
 	AUDIO_PKT_INFO("Audio Packet Port Driver Initialized\n");
 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 
