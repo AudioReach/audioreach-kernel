@@ -1,0 +1,12 @@
+Source: audioreach-kernel
+Section: misc
+Priority: optional
+Maintainer: Radhika Garg <radhgarg@qti.qualcomm.com>
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 13),
+Standards-Version: 4.6.2
+
+Package: audioreach-kernel
+Architecture: arm64
+Depends: ${misc:Depends}
+Description: Qualcomm audio kernel headers
