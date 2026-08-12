@@ -773,6 +773,8 @@ static const struct snd_soc_dai_ops q6i2sdummy_ops = {
 
 static const struct snd_soc_dai_ops q6tdmdummy_ops = {
 	.startup	= q6apm_lpass_dai_startup,
+	.shutdown	= q6i2s_lpass_dai_shutdown,
+	.set_sysclk	= q6i2s_set_sysclk,
 };
 
 static const struct snd_soc_component_driver q6apm_lpass_dummy_dai_component = {
@@ -798,9 +800,10 @@ static int of_q6apm_parse_dai_data(struct device *dev,
 		}
 
 		switch (id) {
-		/* MI2S specific properties */
+		/* MI2S and TDM specific properties */
 		case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 		case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
+		case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
 			priv = &data->priv[id];
 			priv->mclk = of_clk_get_by_name(node, "mclk");
 			if (IS_ERR(priv->mclk)) {

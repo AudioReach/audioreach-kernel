@@ -4,7 +4,9 @@
 
 #include <dt-bindings/sound/qcom,q6afe.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/string.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
@@ -38,7 +40,9 @@ struct snd_soc_common {
 	bool codec_sysclk_set;
 	bool mi2s_mclk_enable;
 	bool mi2s_bclk_enable;
+	bool qaif_interface;
 	bool wcd_jack;
+
 };
 
 struct qcs6490_snd_data {
@@ -163,6 +167,25 @@ static struct snd_soc_dapm_widget qcs6490_dapm_widgets[] = {
 static const struct snd_soc_dapm_route qcs6490_dapm_routes[] = {
 	{ "SpkrLeft Speaker", NULL, "SpkrLeft SPKR" },
 	{ "SpkrRight Speaker", NULL, "SpkrRight SPKR" },
+};
+
+static const struct snd_soc_dapm_widget shikra_cqs_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+};
+
+static const struct snd_soc_dapm_widget shikra_iqs_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Int Mic", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+};
+
+static const struct snd_kcontrol_new shikra_iqs_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headset Mic"),
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Int Mic"),
+	SOC_DAPM_PIN_SWITCH("Speaker"),
 };
 
 static struct snd_soc_dapm_widget glymur_dapm_widgets[] = {
@@ -481,14 +504,18 @@ static int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 }
 
 
-static void audioreach_get_link_name(const char **link_name, int dai_id)
+static void audioreach_get_link_name(const char **link_name, int dai_id,
+				     bool qaif_interface)
 {
 	switch (dai_id) {
-        case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_RX_0:
 		*link_name = "CODEC_DMA-LPAIF_WSA-RX-0";
-                break;
+		break;
 	case VA_CODEC_DMA_TX_0:
-		*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
+		if (qaif_interface)
+			*link_name = "CODEC_DMA-QAIF-TX-0";
+		else
+			*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
 		break;
 	case RX_CODEC_DMA_RX_0:
 		*link_name = "CODEC_DMA-LPAIF_RXTX-RX-0";
@@ -500,13 +527,15 @@ static void audioreach_get_link_name(const char **link_name, int dai_id)
 		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-3";
 		break;
 	case PRIMARY_MI2S_RX:
-		if (strstr(*link_name, "HS") != NULL)
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-RX-0";
+		else if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-RX-PRIMARY";
 		else
 			*link_name = "MI2S-LPAIF-RX-PRIMARY";
 		break;
 	case PRIMARY_MI2S_TX:
-		if (strstr(*link_name, "HS") != NULL)
+		if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-TX-PRIMARY";
 		else
 			*link_name = "MI2S-LPAIF-TX-PRIMARY";
@@ -535,6 +564,10 @@ static void audioreach_get_link_name(const char **link_name, int dai_id)
 		else
 			*link_name = "MI2S-LPAIF-TX-TERTIARY";
 		break;
+	case SECONDARY_TDM_RX_0:
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-RX-2";
+		break;
 	default:
 		break;
 	}
@@ -550,6 +583,8 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 	struct snd_soc_dai_link *link;
 	struct of_phandle_args args;
 	struct snd_soc_dai_link_component *dlc;
+	struct qcs6490_snd_data *data = snd_soc_card_get_drvdata(card);
+	const struct snd_soc_common *common = data ? data->snd_soc_common_priv : NULL;
 	int ret, num_links;
 
 	ret = snd_soc_of_parse_card_name(card, "model");
@@ -634,7 +669,7 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 			goto err;
 		}
 
-		link->id = args.args[0];	
+		link->id = args.args[0];
 		link->platforms->of_node = link->cpus->of_node;
 
 		if (codec) {
@@ -663,7 +698,8 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 			link->nonatomic = 1;
 		}
 
-		audioreach_get_link_name(&link->name, link->id);
+		audioreach_get_link_name(&link->name, link->id,
+					 common && common->qaif_interface);
 		link->stream_name = link->name;
 		link++;
 
@@ -744,16 +780,56 @@ static int qcs6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static int qcs6490_tdm_hw_params(struct snd_pcm_substream *substream,
+				 struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct qcs6490_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai;
+	unsigned int slots = params_channels(params);
+	unsigned int slot_width = 32;
+	unsigned int bclk_freq;
+	int ret;
+	int i;
+
+	if (!slots || slots > 16)
+		return -EINVAL;
+
+	bclk_freq = snd_soc_tdm_params_to_bclk(params, slot_width, slots, 1);
+	if (!bclk_freq)
+		return -EINVAL;
+
+	if (data->snd_soc_common_priv->mi2s_bclk_enable) {
+		ret = snd_soc_dai_set_sysclk(cpu_dai, LPAIF_MI2S_BCLK,
+					     bclk_freq, SND_SOC_CLOCK_IN);
+		if (ret)
+			return ret;
+	}
+
+	if (data->snd_soc_common_priv->codec_sysclk_set) {
+		for_each_rtd_codec_dais(rtd, i, codec_dai) {
+			ret = snd_soc_dai_set_sysclk(codec_dai, 0, bclk_freq,
+						     SND_SOC_CLOCK_IN);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int qcs6490_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				struct snd_pcm_hw_params *params)
+					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_interval *rate = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_RATE);
+						SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_CHANNELS);
+						SNDRV_PCM_HW_PARAM_CHANNELS);
 
 	rate->min = rate->max = 48000;
+
 	switch (cpu_dai->id) {
 	case TX_CODEC_DMA_TX_0:
 	case TX_CODEC_DMA_TX_1:
@@ -818,6 +894,8 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 				return ret;
 		}
 		break;
+	case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
+		return qcs6490_tdm_hw_params(substream, params);
 	default:
 		break;
 	}
@@ -867,6 +945,27 @@ static void qcs6490_add_be_ops(struct snd_soc_card *card)
 	}
 }
 
+static struct snd_soc_common shikra_cqs_priv_data = {
+	.driver_name = "shikra-cqs",
+	.dapm_widgets = shikra_cqs_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(shikra_cqs_dapm_widgets),
+	.qaif_interface = true,
+	.mi2s_bclk_enable = true,
+	.codec_sysclk_set = true,
+};
+
+static struct snd_soc_common shikra_iqs_priv_data = {
+	.driver_name = "shikra-iqs",
+	.dapm_widgets = shikra_iqs_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(shikra_iqs_dapm_widgets),
+	.controls = shikra_iqs_controls,
+	.num_controls = ARRAY_SIZE(shikra_iqs_controls),
+	.qaif_interface = true,
+	.codec_dai_fmt = SND_SOC_DAIFMT_CBP_CFP | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S,
+	.mi2s_bclk_enable = true,
+	.codec_sysclk_set = true,
+};
+
 static int qcs6490_platform_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card;
@@ -903,7 +1002,11 @@ static int qcs6490_platform_probe(struct platform_device *pdev)
 
 	card->driver_name = data->snd_soc_common_priv->driver_name;
 	qcs6490_add_be_ops(card);
-	return devm_snd_soc_register_card(dev, card);
+	ret = devm_snd_soc_register_card(dev, card);
+	if (ret)
+		return dev_err_probe(dev, ret, "sound card registration failed\n");
+
+	return 0;
 }
 
 static struct snd_soc_common glymur_priv_data = {
@@ -1039,6 +1142,8 @@ static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,sm8650-sndcard", .data = &sm8650_priv_data},
 	{.compatible = "qcom,sm8750-sndcard", .data = &sm8750_priv_data},
 	{.compatible = "qcom,x1e80100-sndcard", .data = &x1e80100_priv_data},
+	{.compatible = "qcom,shikra-cqs-sndcard", .data = &shikra_cqs_priv_data},
+	{.compatible = "qcom,shikra-iqs-sndcard", .data = &shikra_iqs_priv_data},
 	{}
 };
 
