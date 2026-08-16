@@ -67,7 +67,8 @@ int  msm_audio_cma_get_phy_addr(int fd, dma_addr_t *paddr, size_t *pa_len);
 #define AR_DMA_HEAP_HEAP_FLAGS_TYPE unsigned long
 #endif
 
-#if AR_USE_VOID_RETURN_TYPE || defined(HAVE_EXPORTED_DMA_HEAP_API)
+#if IS_ENABLED(CONFIG_DMABUF_HEAPS) && \
+	(AR_USE_VOID_RETURN_TYPE || defined(HAVE_EXPORTED_DMA_HEAP_API))
 #define AR_HAVE_EXPORTED_DMA_HEAP_API 1
 #else
 #define AR_HAVE_EXPORTED_DMA_HEAP_API 0
@@ -1650,4 +1651,6 @@ void q6apm_audio_mem_exit(void)
 MODULE_DESCRIPTION("Q6APM audio mem driver");
 MODULE_LICENSE("GPL");
 AR_MODULE_IMPORT_NS(DMA_BUF);
-MODULE_IMPORT_NS("DMA_BUF_HEAP");
+#if AR_HAVE_EXPORTED_DMA_HEAP_API
+AR_MODULE_IMPORT_NS(DMA_BUF_HEAP);
+#endif
