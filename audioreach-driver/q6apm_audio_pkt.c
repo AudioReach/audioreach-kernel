@@ -38,6 +38,8 @@
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_CMD_SHARED_SATELLITE_MEM_MAP_REGIONS	0x01001026
 #define APM_MEMORY_MAP_BIT_MASK_PHYS_ADDRESS	0x000001C1UL
+#define APM_EVENT_MODULE_TO_CLIENT             0x03001000
+#define APM_SVA_CLIENT_PORT_NUM                0x2010
 
 /* Define Logging Macros */
 static int audio_pkt_debug_mask;
@@ -738,6 +740,12 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 		kfree(audpkt_port_map);
 	} else {
 		dev_dbg(dev, "Token=%u not found\n", hdr->token);
+		if (hdr->opcode == APM_EVENT_MODULE_TO_CLIENT &&
+				hdr->dest_port == GPR_APM_MODULE_IID) {
+			new_dest_port = APM_SVA_CLIENT_PORT_NUM;
+			new_src_port  = hdr->src_port;
+			remap_ports = true;
+		}
 	}
 	mutex_unlock(&apm->audpkt_port_lock);
 
