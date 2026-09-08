@@ -287,6 +287,7 @@ static int qcs6490_snd_sdw_startup(struct snd_pcm_substream *substream)
 	switch (cpu_dai->id) {
 	case RX_CODEC_DMA_RX_0:
 	case TX_CODEC_DMA_TX_3:
+	case VA_CODEC_DMA_TX_0:
 		if (tx_ch_cnt || rx_ch_cnt) {
 			for_each_rtd_codec_dais(rtd, j, codec_dai) {
 				ret = snd_soc_dai_set_channel_map(codec_dai,
@@ -327,6 +328,7 @@ static int qcs6490_snd_sdw_prepare(struct snd_pcm_substream *substream,
 	case TX_CODEC_DMA_TX_1:
 	case TX_CODEC_DMA_TX_2:
 	case TX_CODEC_DMA_TX_3:
+	case VA_CODEC_DMA_TX_0:
 		break;
 	default:
 		return 0;
@@ -375,6 +377,7 @@ static int qcs6490_snd_sdw_hw_params(struct snd_pcm_substream *substream,
 	case TX_CODEC_DMA_TX_1:
 	case TX_CODEC_DMA_TX_2:
 	case TX_CODEC_DMA_TX_3:
+	case VA_CODEC_DMA_TX_0:
 		for_each_rtd_codec_dais(rtd, i, codec_dai) {
 			sruntime = snd_soc_dai_get_stream(codec_dai, substream->stream);
 			if (sruntime != ERR_PTR(-ENOTSUPP))
@@ -402,6 +405,7 @@ static int qcs6490_snd_sdw_hw_free(struct snd_pcm_substream *substream,
 	case TX_CODEC_DMA_TX_1:
 	case TX_CODEC_DMA_TX_2:
 	case TX_CODEC_DMA_TX_3:
+	case VA_CODEC_DMA_TX_0:
 		if (sruntime && *stream_prepared) {
 			sdw_disable_stream(sruntime);
 			sdw_deprepare_stream(sruntime);
@@ -512,13 +516,21 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		*link_name = "CODEC_DMA-LPAIF_WSA-RX-0";
 		break;
 	case VA_CODEC_DMA_TX_0:
-		if (qaif_interface)
-			*link_name = "CODEC_DMA-QAIF-TX-0";
-		else
+		if (qaif_interface) {
+			if (!strcmp(*link_name, "Headphones capture"))
+				*link_name = "CODEC_DMA-QAIF-TX-1";
+			else
+				*link_name = "CODEC_DMA-QAIF-TX-0";
+		} else {
 			*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
+		}
 		break;
 	case RX_CODEC_DMA_RX_0:
 		*link_name = "CODEC_DMA-LPAIF_RXTX-RX-0";
+		break;
+	case RX_CODEC_DMA_RX_1:
+		if (qaif_interface)
+			*link_name = "CODEC_DMA-QAIF-RX-1";
 		break;
 	case TX_CODEC_DMA_TX_0:
 		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-0";
