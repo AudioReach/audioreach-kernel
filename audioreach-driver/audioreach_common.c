@@ -19,7 +19,7 @@
 
 #define AFE_PORT_MAX   137
 #define NAME_SIZE	32
-
+#define LRCLK_SYSCLK 1
 #define I2S_MCLKFS 256
 
 #define I2S_MCLK_RATE(rate) \
@@ -35,6 +35,8 @@ struct snd_soc_common {
 	int num_dapm_routes;
 	const struct snd_kcontrol_new *controls;
 	int num_controls;
+	int (*snd_hw_params)(struct snd_pcm_substream *substream,
+			     struct snd_pcm_hw_params *params);
 	unsigned int codec_dai_fmt;
 	int num_wsa_spkr;
 	bool codec_sysclk_set;
@@ -42,7 +44,6 @@ struct snd_soc_common {
 	bool mi2s_bclk_enable;
 	bool qaif_interface;
 	bool wcd_jack;
-
 };
 
 struct qcs6490_snd_data {
@@ -239,6 +240,47 @@ static inline int qcs6490_get_mclk_freq(struct snd_pcm_hw_params *params)
 	}
 
 	return I2S_MCLK_RATE(rate);
+}
+
+static int nord_snd_hw_params(struct snd_pcm_substream *substream,
+			      struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	int rate = params_rate(params);
+	int ret;
+
+	switch (cpu_dai->id) {
+	case TERTIARY_MI2S_RX:
+		ret = snd_soc_dai_set_fmt(codec_dai,
+					  SND_SOC_DAIFMT_CBC_CFC |
+					  SND_SOC_DAIFMT_NB_NF |
+					  SND_SOC_DAIFMT_I2S);
+		if (ret && ret != -EOPNOTSUPP)
+			return ret;
+
+		break;
+	case TERTIARY_MI2S_TX:
+		ret = snd_soc_dai_set_fmt(codec_dai,
+					  SND_SOC_DAIFMT_CBC_CFC |
+					  SND_SOC_DAIFMT_NB_NF |
+					  SND_SOC_DAIFMT_DSP_A);
+		if (ret && ret != -EOPNOTSUPP)
+			return ret;
+
+		/* adau1979 MCLK sourced from LRCLK */
+		ret = snd_soc_component_set_sysclk(codec_dai->component,
+						   0, LRCLK_SYSCLK,
+						   rate, SND_SOC_CLOCK_IN);
+		if (ret && ret != -EOPNOTSUPP)
+			return ret;
+		break;
+	default:
+		break;
+	};
+
+	return 0;
 }
 
 static inline int qcs6490_get_bclk_freq(struct snd_pcm_hw_params *params)
@@ -565,13 +607,17 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "MI2S-LPAIF-TX-SECONDARY";
 		break;
 	case TERTIARY_MI2S_RX:
-		if (strstr(*link_name, "HS") != NULL)
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-RX-8";
+		else if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-RX-TERTIARY";
 		else
 			*link_name = "MI2S-LPAIF-RX-TERTIARY";
 		break;
 	case TERTIARY_MI2S_TX:
-		if (strstr(*link_name, "HS") != NULL)
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-TX-8";
+		else if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-TX-TERTIARY";
 		else
 			*link_name = "MI2S-LPAIF-TX-TERTIARY";
@@ -868,6 +914,13 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 	int bclk_freq = qcs6490_get_bclk_freq(params);
 	int ret = 0;
 
+	if (pdata->snd_soc_common_priv->snd_hw_params) {
+		ret = pdata->snd_soc_common_priv->snd_hw_params(substream,
+						       params);
+		if (ret)
+			return ret;
+	}
+
 	switch (cpu_dai->id) {
 	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
@@ -1041,6 +1094,13 @@ static struct snd_soc_common kaanapali_priv_data = {
 	.wcd_jack = true,
 };
 
+static const struct snd_soc_common nord_ride_priv_data = {
+	.driver_name = "nord",
+	.mi2s_bclk_enable = true,
+	.snd_hw_params = nord_snd_hw_params,
+	.qaif_interface = true,
+};
+
 static struct snd_soc_common qcs9100_priv_data = {
 	.driver_name = "sa8775p",
 	.dapm_widgets = sa8775p_dapm_widgets,
@@ -1142,6 +1202,7 @@ static struct snd_soc_common x1e80100_priv_data = {
 static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,glymur-sndcard", .data = &glymur_priv_data},
 	{.compatible = "qcom,kaanapali-sndcard", .data = &kaanapali_priv_data},
+	{.compatible = "qcom,nord-ride-sndcard", .data = &nord_ride_priv_data},
 	{.compatible = "qcom,qcm6490-idp-sndcard", .data = &qcm6490_priv_data},
 	{.compatible = "qcom,qcs615-sndcard", .data = &qcs615_priv_data},
 	{.compatible = "qcom,qcs6490-rb3gen2-sndcard", .data = &qcs6490_priv_data},
