@@ -588,6 +588,8 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "QAIF-QAIF_AUD-RX-0";
 		else if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-RX-PRIMARY";
+		else if (strstr(*link_name, "WSA2"))
+			*link_name = "MI2S-LPAIF_WSA2-RX-PRIMARY";
 		else
 			*link_name = "MI2S-LPAIF-RX-PRIMARY";
 		break;
@@ -596,6 +598,8 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "QAIF-QAIF_AUD-TX-0";
 		else if (strstr(*link_name, "HS"))
 			*link_name = "MI2S-LPAIF_SDR-TX-PRIMARY";
+		else if (strstr(*link_name, "WSA2"))
+			*link_name = "MI2S-LPAIF_WSA2-TX-PRIMARY";
 		else
 			*link_name = "MI2S-LPAIF-TX-PRIMARY";
 		break;
