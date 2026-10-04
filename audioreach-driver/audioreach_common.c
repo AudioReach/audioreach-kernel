@@ -16,6 +16,7 @@
 #include <linux/input-event-codes.h>
 #include <sound/simple_card_utils.h>
 #include "q6prm_audioreach.h"
+#include "ar_kcompat.h"
 
 #define AFE_PORT_MAX   137
 #define NAME_SIZE	32
@@ -590,6 +591,8 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "MI2S-LPAIF_SDR-RX-PRIMARY";
 		else if (strstr(*link_name, "WSA2"))
 			*link_name = "MI2S-LPAIF_WSA2-RX-PRIMARY";
+		else if (!strcmp(*link_name, "MI2S-LPAIF_RXTX-RX-PRIMARY"))
+			break;
 		else
 			*link_name = "MI2S-LPAIF-RX-PRIMARY";
 		break;
@@ -600,6 +603,8 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "MI2S-LPAIF_SDR-TX-PRIMARY";
 		else if (strstr(*link_name, "WSA2"))
 			*link_name = "MI2S-LPAIF_WSA2-TX-PRIMARY";
+		else if (!strcmp(*link_name, "MI2S-LPAIF_RXTX-TX-PRIMARY"))
+			break;
 		else
 			*link_name = "MI2S-LPAIF-TX-PRIMARY";
 		break;
@@ -634,6 +639,12 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 	case SECONDARY_TDM_RX_0:
 		if (qaif_interface)
 			*link_name = "QAIF-QAIF_AUD-RX-2";
+		break;
+	case LPI_MI2S_RX_0:
+		*link_name = "MI2S-LPAIF_RXTX-RX-PRIMARY";
+		break;
+	case LPI_MI2S_TX_0:
+		*link_name = "MI2S-LPAIF_RXTX-TX-PRIMARY";
 		break;
 	default:
 		break;
@@ -933,6 +944,7 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 	switch (cpu_dai->id) {
 	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
+	case LPI_MI2S_RX_0 ... LPI_MI2S_TX_4:
 		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
 		if (ret && ret != -ENOTSUPP)
 			return ret;
