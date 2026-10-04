@@ -214,6 +214,25 @@ static const struct snd_soc_dapm_route glymur_dapm_routes[] = {
 	{ "TweeterRight Speaker", NULL, "TweeterRight SPKR" },
 };
 
+static const struct snd_kcontrol_new max98091_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headset Mic12"),
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Headset Mic56"),
+	SOC_DAPM_PIN_SWITCH("Speaker"),
+	SOC_DAPM_PIN_SWITCH("Receiver"),
+	SOC_DAPM_PIN_SWITCH("Int Mic"),
+};
+static const struct snd_soc_dapm_widget max98091_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic12", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic56", NULL),
+	SND_SOC_DAPM_MIC("Int Mic", NULL),
+	SND_SOC_DAPM_SPK("Receiver", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+};
+
 static struct snd_soc_dapm_widget sa8775p_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
@@ -1052,6 +1071,8 @@ static struct snd_soc_common shikra_iqs_priv_data = {
 	.codec_sysclk_set = true,
 };
 
+static const struct snd_soc_common *qcs8275_get_priv_data(void);
+
 static int qcs6490_platform_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card;
@@ -1070,6 +1091,10 @@ static int qcs6490_platform_probe(struct platform_device *pdev)
 	data->snd_soc_common_priv = (struct snd_soc_common *)of_device_get_match_data(dev);
 	if (!data->snd_soc_common_priv)
 		return -ENODEV;
+
+	/* For qcs8275, pick the right priv_data based on board identity */
+	if (of_device_is_compatible(dev->of_node, "qcom,qcs8275-sndcard"))
+		data->snd_soc_common_priv = qcs8275_get_priv_data();
 
 	card->owner = THIS_MODULE;
 	card->dev = dev;
@@ -1160,6 +1185,37 @@ static struct snd_soc_common qcs8275_priv_data = {
 	.num_dapm_widgets = ARRAY_SIZE(sa8775p_dapm_widgets),
 };
 
+static struct snd_soc_common monaco_monza_priv_data = {
+	.driver_name = "qcs8300",
+	.dapm_widgets = max98091_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(max98091_dapm_widgets),
+	.controls = max98091_controls,
+	.num_controls = ARRAY_SIZE(max98091_controls),
+	.codec_sysclk_set = true,
+	.codec_dai_fmt = SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_BC_FC,
+};
+
+static const struct snd_soc_common *qcs8275_get_priv_data(void)
+{
+	/*
+	 * Both monaco-evk and monaco-arduino-monza (ventuno) use the same
+	 * sound-node compatible "qcom,qcs8275-sndcard", so the OF match table
+	 * alone cannot distinguish them.  We resolve the correct priv_data at
+	 * runtime by inspecting the root board compatible:
+	 *
+	 *  arduino,monza  -> monaco-arduino-monza (ventuno Q)
+	 *                    codec: max98091 (I2S, BC_FC, needs set_fmt +
+	 *                    set_sysclk) -> monaco_monza_priv_data
+	 *
+	 *  qcom,monaco-evk -> Monaco EVK
+	 *                    codec: max98357a + dmic (simple amp, no set_fmt /
+	 *                    set_sysclk needed) -> qcs8275_priv_data
+	 */
+	if (of_machine_is_compatible("arduino,monza"))
+		return &monaco_monza_priv_data;
+	return &qcs8275_priv_data;
+}
+
 static struct snd_soc_common sc8280xp_priv_data = {
 	.driver_name = "sc8280xp",
 	.dapm_widgets = qcs6490_dapm_widgets,
@@ -1227,7 +1283,8 @@ static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,qcm6490-idp-sndcard", .data = &qcm6490_priv_data},
 	{.compatible = "qcom,qcs615-sndcard", .data = &qcs615_priv_data},
 	{.compatible = "qcom,qcs6490-rb3gen2-sndcard", .data = &qcs6490_priv_data},
-	{.compatible = "qcom,qcs8275-sndcard", .data = &qcs8275_priv_data},
+	{.compatible = "qcom,qcs8275-sndcard"},
+	{.compatible = "qcom,monaco-gertrude-sndcard", .data = &monaco_monza_priv_data},
 	{.compatible = "qcom,qcs9075-sndcard", .data = &qcs9100_priv_data},
 	{.compatible = "qcom,qcs9100-sndcard", .data = &qcs9100_priv_data},
 	{.compatible = "qcom,sc8280xp-sndcard", .data = &sc8280xp_priv_data},
