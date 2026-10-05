@@ -583,6 +583,9 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 	case TX_CODEC_DMA_TX_3:
 		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-3";
 		break;
+	case DISPLAY_PORT_RX_0:
+		*link_name = "DISPLAY_PORT-RX";
+		break;
 	case PRIMARY_MI2S_RX:
 		if (qaif_interface)
 			*link_name = "QAIF-QAIF_AUD-RX-0";
