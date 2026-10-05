@@ -96,3 +96,36 @@
 #endif
 
 #endif /* __AR_KCOMPAT_H__ */
+
+/*
+ * snd_soc_dapm_to_card() was a downstream/vendor helper that never landed in
+ * mainline.  Mainline kernels (including 6.8+) expose the card pointer
+ * directly as dapm->card.  Provide a fallback so code that still calls the
+ * macro compiles on kernels that lack it.
+ */
+#ifndef snd_soc_dapm_to_card
+# define snd_soc_dapm_to_card(dapm)	((dapm)->card)
+#endif
+
+/*
+ * LPI_MI2S_RX/TX port IDs were added in the Qualcomm downstream kernel
+ * (qualcomm-linux/kernel-topics); they landed in mainline at v7.1
+ * (commit e46957f27c60).  Define them here so the driver builds on kernels
+ * older than v7.1 (all 6.x and v7.0).
+ *
+ * Values are taken from the Qualcomm downstream
+ * include/dt-bindings/sound/qcom,q6dsp-lpass-ports.h.
+ * They follow immediately after QUINARY_MI2S_TX (128) / USB_RX (136).
+ */
+#ifndef LPI_MI2S_RX_0
+# define LPI_MI2S_RX_0	137
+# define LPI_MI2S_TX_0	138
+# define LPI_MI2S_RX_1	139
+# define LPI_MI2S_TX_1	140
+# define LPI_MI2S_RX_2	141
+# define LPI_MI2S_TX_2	142
+# define LPI_MI2S_RX_3	143
+# define LPI_MI2S_TX_3	144
+# define LPI_MI2S_RX_4	145
+# define LPI_MI2S_TX_4	146
+#endif
