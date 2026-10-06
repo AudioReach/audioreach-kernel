@@ -1211,8 +1211,18 @@ static struct snd_soc_common x1e80100_priv_data = {
 	.wcd_jack = true,
 };
 
+static const struct snd_soc_common hawi_priv_data = {
+	.driver_name = "hawi",
+	.dapm_widgets = sa8775p_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(sa8775p_dapm_widgets),
+	.codec_sysclk_set = true,
+	.mi2s_bclk_enable = true,
+	.wcd_jack = true,
+};
+
 static const struct of_device_id snd_qcs6490_dt_match[] = {
 	{.compatible = "qcom,glymur-sndcard", .data = &glymur_priv_data},
+	{.compatible = "qcom,hawi-sndcard", .data = &hawi_priv_data},
 	{.compatible = "qcom,kaanapali-sndcard", .data = &kaanapali_priv_data},
 	{.compatible = "qcom,nord-ride-sndcard", .data = &nord_ride_priv_data},
 	{.compatible = "qcom,qcm6490-idp-sndcard", .data = &qcm6490_priv_data},
