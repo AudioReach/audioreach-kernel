@@ -17,7 +17,7 @@
 #include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 
-#define APM_PORT_MAX	127
+#define APM_PORT_MAX	(AIF_TDM_TX_8 + 1)
 #define AUDIOREACH_BE_PCM_BASE	16
 
 #define Q6AFE_TDM_PB_DAI(pre, num, did) {				\
@@ -579,6 +579,8 @@ static struct snd_soc_dai_driver q6dsp_audio_fe_dais[] = {
 	Q6AFE_TDM_CAP_DAI("Quinary", 5, QUINARY_TDM_TX_5),
 	Q6AFE_TDM_CAP_DAI("Quinary", 6, QUINARY_TDM_TX_6),
 	Q6AFE_TDM_CAP_DAI("Quinary", 7, QUINARY_TDM_TX_7),
+	Q6AFE_TDM_PB_DAI("AIF RX8", 8, AIF_TDM_RX_8),
+	Q6AFE_TDM_CAP_DAI("AIF TX8", 8, AIF_TDM_TX_8),
 	Q6AFE_DP_RX_DAI(DISPLAY_PORT_RX_0),
 	Q6AFE_DP_RX_DAI(DISPLAY_PORT_RX_1),
 	Q6AFE_DP_RX_DAI(DISPLAY_PORT_RX_2),
@@ -678,6 +680,8 @@ q6dsp_audio_ports_set_config(struct device *dev,
 			q6dsp_audio_fe_dais[i].ops = cfg->q6i2s_ops;
 			break;
 		case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
+		case AIF_TDM_RX_8:
+		case AIF_TDM_TX_8:
 			q6dsp_audio_fe_dais[i].ops = cfg->q6tdm_ops;
 			break;
 		case WSA_CODEC_DMA_RX_0 ... RX_CODEC_DMA_RX_7:
@@ -806,6 +810,8 @@ static int of_q6apm_parse_dai_data(struct device *dev,
 		case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 		case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
 		case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
+		case AIF_TDM_RX_8:
+		case AIF_TDM_TX_8:
 			priv = &data->priv[id];
 			priv->mclk = of_clk_get_by_name(node, "mclk");
 			if (IS_ERR(priv->mclk)) {
