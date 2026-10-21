@@ -230,6 +230,28 @@ static struct snd_soc_dapm_widget sa8775p_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("DP7 Jack", NULL),
 };
 
+static const struct snd_kcontrol_new max98090_controls[] = {
+	SOC_DAPM_PIN_SWITCH("Headset Mic12"),
+	SOC_DAPM_PIN_SWITCH("Headset Mic34"),
+	SOC_DAPM_PIN_SWITCH("Headset Mic56"),
+	SOC_DAPM_PIN_SWITCH("Headphone"),
+	SOC_DAPM_PIN_SWITCH("Speaker"),
+	SOC_DAPM_PIN_SWITCH("Receiver"),
+	SOC_DAPM_PIN_SWITCH("Int Mic"),
+};
+
+static const struct snd_soc_dapm_widget max98090_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic12", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic34", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic56", NULL),
+	SND_SOC_DAPM_MIC("Int Mic", NULL),
+	SND_SOC_DAPM_SPK("Receiver", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+};
+
 static inline int qcs6490_get_mclk_freq(struct snd_pcm_hw_params *params)
 {
 	int rate = params_rate(params);
@@ -602,6 +624,15 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		if (qaif_interface)
 			*link_name = "QAIF-QAIF_AUD-RX-2";
 		break;
+	case LPI_MI2S_RX_0:
+		*link_name = "MI2S-LPAIF_RXTX-RX-PRIMARY";
+		break;
+	case LPI_MI2S_TX_0:
+		*link_name = "MI2S-LPAIF_RXTX-TX-PRIMARY";
+		break;
+	case LPI_MI2S_RX_4:
+		*link_name = "MI2S-LPAIF_WSA2-RX-PRIMARY";
+		break;
 	default:
 		break;
 	}
@@ -945,6 +976,7 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 	switch (cpu_dai->id) {
 	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
+	case LPI_MI2S_RX_0 ... LPI_MI2S_TX_4:
 		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
 		if (ret && ret != -ENOTSUPP)
 			return ret;
@@ -1161,8 +1193,12 @@ static struct snd_soc_common qcs6490_priv_data = {
 
 static struct snd_soc_common qcs8275_priv_data = {
 	.driver_name = "qcs8300",
-	.dapm_widgets = sa8775p_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(sa8775p_dapm_widgets),
+	.dapm_widgets = max98090_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(max98090_dapm_widgets),
+	.controls = max98090_controls,
+	.num_controls = ARRAY_SIZE(max98090_controls),
+	.codec_sysclk_set = true,
+	.codec_dai_fmt = SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_BC_FC,
 };
 
 static struct snd_soc_common sc8280xp_priv_data = {
