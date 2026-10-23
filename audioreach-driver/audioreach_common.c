@@ -17,7 +17,7 @@
 #include <sound/simple_card_utils.h>
 #include "q6prm_audioreach.h"
 
-#define AFE_PORT_MAX	(AIF_TDM_TX_8 + 1)
+#define AFE_PORT_MAX	(AIF_TDM_TX_12 + 1)
 #define NAME_SIZE	32
 #define LRCLK_SYSCLK 1
 #define I2S_MCLKFS 256
@@ -580,6 +580,9 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		else
 			*link_name = "MI2S-LPAIF-RX-PRIMARY";
 		break;
+	case AIF_MI2S_RX_0:
+		*link_name = "QAIF-QAIF_AUD-RX-0";
+		break;
 	case PRIMARY_MI2S_TX:
 		if (qaif_interface)
 			*link_name = "QAIF-QAIF_AUD-TX-0";
@@ -589,6 +592,9 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "MI2S-LPAIF_WSA2-TX-PRIMARY";
 		else
 			*link_name = "MI2S-LPAIF-TX-PRIMARY";
+		break;
+	case AIF_MI2S_TX_0:
+		*link_name = "QAIF-QAIF_AUD-TX-0";
 		break;
 	case SECONDARY_MI2S_RX:
 		if (strstr(*link_name, "HS") != NULL)
@@ -632,6 +638,9 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		break;
 	case LPI_MI2S_RX_4:
 		*link_name = "MI2S-LPAIF_WSA2-RX-PRIMARY";
+		break;
+	case AIF_TDM_RX_2:
+		*link_name = "QAIF-QAIF_AUD-RX-2";
 		break;
 	default:
 		break;
@@ -977,6 +986,7 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
 	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
 	case LPI_MI2S_RX_0 ... LPI_MI2S_TX_4:
+	case AIF_MI2S_RX_0 ... AIF_MI2S_TX_12:
 		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
 		if (ret && ret != -ENOTSUPP)
 			return ret;
@@ -1013,8 +1023,7 @@ static int qcs6490_snd_hw_params(struct snd_pcm_substream *substream,
 		}
 		break;
 	case PRIMARY_TDM_RX_0 ... QUINARY_TDM_TX_7:
-	case AIF_TDM_RX_8:
-	case AIF_TDM_TX_8:
+	case AIF_TDM_RX_0 ... AIF_TDM_TX_12:
 		return qcs6490_tdm_hw_params(substream, params);
 	default:
 		break;
