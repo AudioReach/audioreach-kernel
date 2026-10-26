@@ -642,6 +642,10 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 	case AIF_TDM_RX_2:
 		*link_name = "QAIF-QAIF_AUD-RX-2";
 		break;
+	case AIF_TDM_RX_1:
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-RX-1";
+		break;
 	default:
 		break;
 	}
@@ -1277,6 +1281,7 @@ static const struct snd_soc_common hawi_priv_data = {
 	.codec_sysclk_set = true,
 	.mi2s_bclk_enable = true,
 	.wcd_jack = true,
+	.qaif_interface = true,
 };
 
 static const struct of_device_id snd_qcs6490_dt_match[] = {
