@@ -47,6 +47,7 @@ struct snd_soc_common {
 	bool mi2s_mclk_enable;
 	bool mi2s_bclk_enable;
 	bool qaif_interface;
+	bool qaif_va_link;
 	bool wcd_jack;
 };
 
@@ -536,14 +537,16 @@ static int qcs6490_snd_wcd_jack_setup(struct snd_soc_pcm_runtime *rtd,
 
 
 static void audioreach_get_link_name(const char **link_name, int dai_id,
-				     bool qaif_interface)
+				     bool qaif_interface, bool qaif_va_link)
 {
 	switch (dai_id) {
 	case WSA_CODEC_DMA_RX_0:
 		*link_name = "CODEC_DMA-LPAIF_WSA-RX-0";
 		break;
 	case VA_CODEC_DMA_TX_0:
-		if (qaif_interface)
+		if (qaif_va_link)
+			*link_name = "CODEC_DMA-QAIF_VA-TX-0";
+		else if (qaif_interface)
 			*link_name = "CODEC_DMA-QAIF-TX-0";
 		else
 			*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
@@ -641,6 +644,10 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		break;
 	case AIF_TDM_RX_2:
 		*link_name = "QAIF-QAIF_AUD-RX-2";
+		break;
+	case AIF_TDM_RX_1:
+		if (qaif_interface)
+			*link_name = "QAIF-QAIF_AUD-RX-1";
 		break;
 	default:
 		break;
@@ -773,7 +780,8 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 		}
 
 		audioreach_get_link_name(&link->name, link->id,
-					 common && common->qaif_interface);
+					 common && common->qaif_interface,
+					 common && common->qaif_va_link);
 		link->stream_name = link->name;
 		link++;
 
@@ -1277,6 +1285,8 @@ static const struct snd_soc_common hawi_priv_data = {
 	.codec_sysclk_set = true,
 	.mi2s_bclk_enable = true,
 	.wcd_jack = true,
+	.qaif_interface = true,
+	.qaif_va_link = true,
 };
 
 static const struct of_device_id snd_qcs6490_dt_match[] = {
