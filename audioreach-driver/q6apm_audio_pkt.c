@@ -770,6 +770,15 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&apm->readq);
+	if (hdr->opcode == GPR_BASIC_RSP_RESULT) {
+		result = data->payload;
+		/* complete the synchronous APM_CMD_CLOSE_ALL sent on release */
+		if (result->opcode == APM_CMD_CLOSE_ALL) {
+			apm->result.status = result->status;
+			apm->result.opcode = hdr->opcode;
+			wake_up(&apm->readq);
+		}
+	}
 	if (hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
 		result = data->payload;
 		apm->result.opcode = hdr->opcode;
