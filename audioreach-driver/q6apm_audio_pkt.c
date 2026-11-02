@@ -7,6 +7,7 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -37,9 +38,9 @@
 #define APM_CMD_GLOBAL_SHARED_MEM_MAP_REGIONS	0x01001059
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C
 #define APM_CMD_SHARED_SATELLITE_MEM_MAP_REGIONS	0x01001026
+#define APM_CMD_REGISTER_MODULE_EVENTS		0x0100100E
 #define APM_MEMORY_MAP_BIT_MASK_PHYS_ADDRESS	0x000001C1UL
 #define APM_EVENT_MODULE_TO_CLIENT             0x03001000
-#define APM_SVA_CLIENT_PORT_NUM                0x2010
 
 /* Define Logging Macros */
 static int audio_pkt_debug_mask;
@@ -84,6 +85,7 @@ struct q6apm_audio_pkt {
 
 	struct mutex audpkt_port_lock;
 	struct idr audpkt_port_idr;
+	struct list_head audpkt_event_routes;
 };
 
 struct audio_pkt_apm_cmd_shared_mem_map_regions_t {
@@ -142,6 +144,27 @@ struct audio_pkt_clnt_ch {
 struct gpr_port_map {
 	u32 src_port;
 	u32 dst_port;
+};
+
+struct apm_module_register_events {
+	u32 module_instance_id;
+	u32 event_id;
+	u32 is_register;
+	u32 error_code;
+	u32 event_config_payload_size;
+	u32 reserved;
+} __packed;
+
+struct apm_module_event {
+	u32 event_id;
+	u32 event_payload_size;
+} __packed;
+
+struct audpkt_event_route {
+	struct list_head node;
+	u32 module_instance_id;
+	u32 event_id;
+	u32 client_port;
 };
 
 #define dev_to_audpkt_dev(_dev) container_of(_dev, struct q6apm_audio_pkt, dev)
@@ -302,6 +325,111 @@ static int audio_pkt_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static struct audpkt_event_route *
+audpkt_find_event_route(struct q6apm_audio_pkt *audpkt_dev,
+			u32 module_instance_id, u32 event_id)
+{
+	struct audpkt_event_route *route;
+
+	list_for_each_entry(route, &audpkt_dev->audpkt_event_routes, node) {
+		if (route->module_instance_id == module_instance_id &&
+		    route->event_id == event_id)
+			return route;
+	}
+
+	return NULL;
+}
+
+static void audpkt_remove_event_route_locked(struct q6apm_audio_pkt *audpkt_dev,
+					     u32 module_instance_id,
+					     u32 event_id)
+{
+	struct audpkt_event_route *route;
+
+	route = audpkt_find_event_route(audpkt_dev, module_instance_id,
+					event_id);
+	if (!route)
+		return;
+
+	list_del(&route->node);
+	kfree(route);
+}
+
+static int audpkt_update_event_route(struct q6apm_audio_pkt *audpkt_dev,
+				     struct gpr_hdr *hdr, void *kbuf,
+				     size_t count)
+{
+	struct apm_module_register_events *event;
+	struct audpkt_event_route *route;
+	struct apm_cmd_header *cmd_hdr;
+	size_t hdr_size;
+	u8 *payload;
+	int ret = 0;
+
+	if (hdr->opcode != APM_CMD_REGISTER_MODULE_EVENTS)
+		return 0;
+
+	hdr_size = hdr->hdr_size * 4;
+	if (hdr_size < GPR_HDR_SIZE)
+		return -EINVAL;
+
+	if (count < hdr_size + APM_CMD_HDR_SIZE + sizeof(*event))
+		return -EINVAL;
+
+	cmd_hdr = (struct apm_cmd_header *)((u8 *)kbuf + hdr_size);
+	if (cmd_hdr->payload_size < sizeof(*event))
+		return -EINVAL;
+
+	payload = (u8 *)kbuf + hdr_size + APM_CMD_HDR_SIZE;
+	event = (struct apm_module_register_events *)payload;
+
+	mutex_lock(&audpkt_dev->audpkt_port_lock);
+
+	if (!event->is_register) {
+		audpkt_remove_event_route_locked(audpkt_dev,
+						 event->module_instance_id,
+						 event->event_id);
+		goto unlock;
+	}
+
+	route = audpkt_find_event_route(audpkt_dev,
+					event->module_instance_id,
+					event->event_id);
+	if (route) {
+		route->client_port = hdr->src_port;
+		goto unlock;
+	}
+
+	route = kzalloc(sizeof(*route), GFP_KERNEL);
+	if (!route) {
+		ret = -ENOMEM;
+		goto unlock;
+	}
+
+	route->module_instance_id = event->module_instance_id;
+	route->event_id = event->event_id;
+	route->client_port = hdr->src_port;
+
+	list_add_tail(&route->node, &audpkt_dev->audpkt_event_routes);
+
+unlock:
+	mutex_unlock(&audpkt_dev->audpkt_port_lock);
+	return ret;
+}
+
+static void audpkt_free_event_routes(struct q6apm_audio_pkt *audpkt_dev)
+{
+	struct audpkt_event_route *route, *tmp;
+
+	mutex_lock(&audpkt_dev->audpkt_port_lock);
+	list_for_each_entry_safe(route, tmp,
+				 &audpkt_dev->audpkt_event_routes, node) {
+		list_del(&route->node);
+		kfree(route);
+	}
+	mutex_unlock(&audpkt_dev->audpkt_port_lock);
+}
+
 /**
  * audio_pkt_release() - release operation on audio_pkt device
  * inode:	Pointer to the inode structure.
@@ -331,6 +459,7 @@ static int audio_pkt_release(struct inode *inode, struct file *file)
 	wake_up_interruptible(&audpkt_dev->readq);
 	spin_unlock_irqrestore(&audpkt_dev->queue_lock, flags);
 
+	audpkt_free_event_routes(audpkt_dev);
 	put_device(dev);
 	file->private_data = NULL;
 	q6apm_audio_close_all();
@@ -508,6 +637,10 @@ static ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 	if (ret < 0)
 		goto free_kbuf;
 
+	ret = audpkt_update_event_route(audpkt_dev, audpkt_hdr, kbuf, count);
+	if (ret < 0)
+		goto free_kbuf;
+
 	audpkt_port_map = kmalloc(sizeof(*audpkt_port_map), GFP_KERNEL);
 	if (!audpkt_port_map) {
 		AUDIO_PKT_ERR("kmalloc FAILED !!\n");
@@ -671,6 +804,7 @@ static int q6apm_audio_pkt_probe(gpr_device_t *adev)
 
 	mutex_init(&apm->audpkt_port_lock);
 	idr_init(&apm->audpkt_port_idr);
+	INIT_LIST_HEAD(&apm->audpkt_event_routes);
 
 	g_apm = apm;
 
@@ -717,6 +851,7 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 	unsigned long flags;
 	struct sk_buff *skb;
 	struct gpr_port_map *audpkt_port_map;
+	const struct apm_module_event *event;
 
 	u32 new_dest_port = 0, new_src_port = 0;
 	bool remap_ports = false;
@@ -740,11 +875,24 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 		kfree(audpkt_port_map);
 	} else {
 		dev_dbg(dev, "Token=%u not found\n", hdr->token);
+
 		if (hdr->opcode == APM_EVENT_MODULE_TO_CLIENT &&
-				hdr->dest_port == GPR_APM_MODULE_IID) {
-			new_dest_port = APM_SVA_CLIENT_PORT_NUM;
-			new_src_port  = hdr->src_port;
-			remap_ports = true;
+		    hdr->dest_port == GPR_APM_MODULE_IID &&
+		    pkt_size >= hdr_size + sizeof(*event)) {
+			struct audpkt_event_route *route;
+
+			event = data->payload;
+			route = audpkt_find_event_route(apm, hdr->src_port,
+							event->event_id);
+			if (route) {
+				new_dest_port = route->client_port;
+				new_src_port = hdr->src_port;
+				remap_ports = true;
+			} else {
+				dev_dbg(dev,
+					"No route for src_port=0x%x event_id=0x%x\n",
+					hdr->src_port, event->event_id);
+			}
 		}
 	}
 	mutex_unlock(&apm->audpkt_port_lock);
