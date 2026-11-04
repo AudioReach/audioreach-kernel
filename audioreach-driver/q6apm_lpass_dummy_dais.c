@@ -2,8 +2,6 @@
 // Copyright (c) 2021, Linaro Limited
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
-#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
-#include <dt-bindings/sound/qcom,q6afe.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/module.h>

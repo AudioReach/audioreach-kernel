@@ -12,7 +12,6 @@
 #include <linux/jiffies.h>
 #include <linux/soc/qcom/apr.h>
 #include <dt-bindings/soc/qcom,gpr.h>
-#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 #include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 #include "ar_kcompat.h"
