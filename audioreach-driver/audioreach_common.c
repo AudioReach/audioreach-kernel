@@ -2,7 +2,6 @@
 // Copyright (c) 2022, Linaro Limited
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
-#include <dt-bindings/sound/qcom,q6afe.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -15,6 +14,7 @@
 #include <sound/jack.h>
 #include <linux/input-event-codes.h>
 #include <sound/simple_card_utils.h>
+#include "q6apm_audio.h"
 #include "q6prm_audioreach.h"
 
 #define AFE_PORT_MAX	(AIF_TDM_TX_12 + 1)
