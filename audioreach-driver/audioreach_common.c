@@ -59,6 +59,7 @@ struct qcs6490_snd_data {
 	struct snd_soc_jack dp_jack[8];
 	struct snd_soc_common *snd_soc_common_priv;
 	bool jack_setup;
+	bool wsa_pa_unmuted;
 };
 
 struct qcom_snd_common_data {
@@ -77,26 +78,7 @@ static struct snd_soc_jack_pin qcs6490_headset_jack_pins[] = {
 	},
 };
 
-static char *qcs6490_wsa_spk_to_prefix(const char *spk_name)
-{
-	if (!strcmp(spk_name, "WooferLeft Speaker"))
-		return "WooferLeft";
-	if (!strcmp(spk_name, "TweeterLeft Speaker"))
-		return "TweeterLeft";
-	if (!strcmp(spk_name, "WooferRight Speaker"))
-		return "WooferRight";
-	if (!strcmp(spk_name, "TweeterRight Speaker"))
-		return "TweeterRight";
-	if (!strcmp(spk_name, "SpkrLeft Speaker"))
-		return "SpkrLeft";
-	if (!strcmp(spk_name, "SpkrRight Speaker"))
-		return "SpkrRight";
-
-	return NULL;
-}
-
-static void qcs6490_wsa_mute_stream(struct snd_soc_card *card,
-				    const char *prefix, int mute)
+static void qcs6490_wsa_mute_all(struct snd_soc_card *card, int mute)
 {
 	struct snd_soc_pcm_runtime *rtd;
 	struct snd_soc_dai *cpu_dai, *codec_dai;
@@ -109,47 +91,50 @@ static void qcs6490_wsa_mute_stream(struct snd_soc_card *card,
 			continue;
 
 		for_each_rtd_codec_dais(rtd, i, codec_dai) {
-			const char *name_prefix;
-
 			if (!codec_dai->component || !codec_dai->driver ||
 			    !codec_dai->driver->ops ||
 			    !codec_dai->driver->ops->mute_stream)
-				continue;
-
-			name_prefix = codec_dai->component->name_prefix;
-			if (!name_prefix || strcmp(name_prefix, prefix))
 				continue;
 
 			ret = codec_dai->driver->ops->mute_stream(codec_dai, mute,
 						SNDRV_PCM_STREAM_PLAYBACK);
 			if (ret && ret != -ENOTSUPP)
 				dev_warn(card->dev,
-					 "mute_stream failed for %s on %s: %d\n",
-					 prefix, codec_dai->name, ret);
-			return;
+					 "mute_stream failed on %s: %d\n",
+					 codec_dai->name, ret);
 		}
 	}
 }
 
-static int qcs6490_wsa_spk_event(struct snd_soc_dapm_widget *w,
-				 struct snd_kcontrol *kcontrol,
-				 int event)
+static int qcs6490_wsa_pa_event(struct snd_soc_dapm_widget *w,
+				struct snd_kcontrol *kcontrol,
+				int event)
 {
-	char *prefix = qcs6490_wsa_spk_to_prefix(w->name);
-
-	if (!prefix)
-		return 0;
+	struct snd_soc_card *card = snd_soc_dapm_to_card(w->dapm);
+	struct qcs6490_snd_data *data = snd_soc_card_get_drvdata(card);
+	bool rx_prep;
+	int mute;
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		qcs6490_wsa_mute_stream(snd_soc_dapm_to_card(w->dapm), prefix, 0);
+		mute = 0;
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		qcs6490_wsa_mute_stream(snd_soc_dapm_to_card(w->dapm), prefix, 1);
+		mute = 1;
 		break;
 	default:
-		break;
+		return 0;
 	}
+
+	rx_prep = data->stream_prepared[WSA_CODEC_DMA_RX_0] ||
+		  data->stream_prepared[WSA_CODEC_DMA_RX_1];
+
+	if (!rx_prep || data->wsa_pa_unmuted == !mute)
+		return 0;
+
+	data->wsa_pa_unmuted = !mute;
+
+	qcs6490_wsa_mute_all(card, mute);
 
 	return 0;
 }
@@ -165,8 +150,10 @@ static struct snd_soc_dapm_widget qcs6490_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("DP5 Jack", NULL),
 	SND_SOC_DAPM_SPK("DP6 Jack", NULL),
 	SND_SOC_DAPM_SPK("DP7 Jack", NULL),
-	SND_SOC_DAPM_SPK("SpkrLeft Speaker", qcs6490_wsa_spk_event),
-	SND_SOC_DAPM_SPK("SpkrRight Speaker", qcs6490_wsa_spk_event),
+	SND_SOC_DAPM_SPK("SpkrLeft Speaker", NULL),
+	SND_SOC_DAPM_SPK("SpkrRight Speaker", NULL),
+	SND_SOC_DAPM_PRE("WSA PA Pre", qcs6490_wsa_pa_event),
+	SND_SOC_DAPM_POST("WSA PA Post", qcs6490_wsa_pa_event),
 
 };
 
@@ -205,10 +192,12 @@ static struct snd_soc_dapm_widget glymur_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("DP5 Jack", NULL),
 	SND_SOC_DAPM_SPK("DP6 Jack", NULL),
 	SND_SOC_DAPM_SPK("DP7 Jack", NULL),
-	SND_SOC_DAPM_SPK("WooferLeft Speaker", qcs6490_wsa_spk_event),
-	SND_SOC_DAPM_SPK("TweeterLeft Speaker", qcs6490_wsa_spk_event),
-	SND_SOC_DAPM_SPK("WooferRight Speaker", qcs6490_wsa_spk_event),
-	SND_SOC_DAPM_SPK("TweeterRight Speaker", qcs6490_wsa_spk_event),
+	SND_SOC_DAPM_SPK("WooferLeft Speaker", NULL),
+	SND_SOC_DAPM_SPK("TweeterLeft Speaker", NULL),
+	SND_SOC_DAPM_SPK("WooferRight Speaker", NULL),
+	SND_SOC_DAPM_SPK("TweeterRight Speaker", NULL),
+	SND_SOC_DAPM_PRE("WSA PA Pre", qcs6490_wsa_pa_event),
+	SND_SOC_DAPM_POST("WSA PA Post", qcs6490_wsa_pa_event),
 };
 
 static const struct snd_soc_dapm_route glymur_dapm_routes[] = {
@@ -340,7 +329,6 @@ static int qcs6490_snd_sdw_prepare(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
-	struct snd_soc_dai *codec_dai;
 	int ret;
 
 	if (!sruntime)
@@ -349,6 +337,7 @@ static int qcs6490_snd_sdw_prepare(struct snd_pcm_substream *substream,
 	switch (cpu_dai->id) {
 	case WSA_CODEC_DMA_RX_0:
 	case WSA_CODEC_DMA_RX_1:
+	case WSA_CODEC_DMA_TX_0:
 	case RX_CODEC_DMA_RX_0:
 	case RX_CODEC_DMA_RX_1:
 	case TX_CODEC_DMA_TX_0:
@@ -398,6 +387,7 @@ static int qcs6490_snd_sdw_hw_params(struct snd_pcm_substream *substream,
 
 	switch (cpu_dai->id) {
 	case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_TX_0:
 	case RX_CODEC_DMA_RX_0:
 	case RX_CODEC_DMA_RX_1:
 	case TX_CODEC_DMA_TX_0:
@@ -426,6 +416,7 @@ static int qcs6490_snd_sdw_hw_free(struct snd_pcm_substream *substream,
 	switch (cpu_dai->id) {
 	case WSA_CODEC_DMA_RX_0:
 	case WSA_CODEC_DMA_RX_1:
+	case WSA_CODEC_DMA_TX_0:
 	case RX_CODEC_DMA_RX_0:
 	case RX_CODEC_DMA_RX_1:
 	case TX_CODEC_DMA_TX_0:
@@ -542,6 +533,9 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 	switch (dai_id) {
 	case WSA_CODEC_DMA_RX_0:
 		*link_name = "CODEC_DMA-LPAIF_WSA-RX-0";
+		break;
+	case WSA_CODEC_DMA_TX_0:
+		*link_name = "CODEC_DMA-LPAIF_WSA-TX-0";
 		break;
 	case VA_CODEC_DMA_TX_0:
 		if (qaif_va_link)
@@ -761,6 +755,23 @@ static int qcs6490_snd_parse_of(struct snd_soc_card *card)
 				goto err;
 			}
 
+			if (link->num_codecs > 8) {
+				struct snd_soc_dai_link_ch_map *ch_maps;
+				int i;
+
+				ch_maps = devm_kcalloc(dev, link->num_codecs,
+						       sizeof(*ch_maps), GFP_KERNEL);
+				if (!ch_maps) {
+					ret = -ENOMEM;
+					goto err;
+				}
+
+				for (i = 0; i < link->num_codecs; i++)
+					ch_maps[i].codec = i;
+
+				link->ch_maps = ch_maps;
+			}
+
 			if (platform) {
 				/* DPCM backend */
 				link->no_pcm = 1;
@@ -847,6 +858,20 @@ static int qcs6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 		}
 
 		break;
+	case WSA_CODEC_DMA_TX_0: {
+		struct snd_soc_dai *codec_dai;
+		int i;
+
+		for_each_rtd_codec_dais(rtd, i, codec_dai) {
+			if (strcmp(codec_dai->component->driver->name, "soundwire"))
+				continue;
+
+			codec_dai->driver->capture.rates |= SNDRV_PCM_RATE_8000;
+			codec_dai->driver->capture.formats |= SNDRV_PCM_FMTBIT_S32_LE;
+		}
+
+		break;
+	}
 	case DISPLAY_PORT_RX_0:
 		/* DISPLAY_PORT dai ids are not contiguous */
 		dp_pcm_id = 0;
@@ -955,19 +980,21 @@ static int qcs6490_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	struct snd_interval *channels = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_CHANNELS);
 
-	rate->min = rate->max = 48000;
-
 	switch (cpu_dai->id) {
+	case WSA_CODEC_DMA_TX_0:
+		rate->min = rate->max = 8000;
+		break;
 	case TX_CODEC_DMA_TX_0:
 	case TX_CODEC_DMA_TX_1:
 	case TX_CODEC_DMA_TX_2:
 	case TX_CODEC_DMA_TX_3:
+		rate->min = rate->max = 48000;
 		channels->min = 1;
 		break;
 	default:
+		rate->min = rate->max = 48000;
 		break;
 	}
-
 
 	return 0;
 }
