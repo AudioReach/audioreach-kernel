@@ -1268,6 +1268,16 @@ static struct snd_soc_common sm8750_priv_data = {
 	.wcd_jack = true,
 };
 
+static struct snd_soc_common eliza_priv_data = {
+	.driver_name = "eliza",
+	.dapm_widgets = qcs6490_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(qcs6490_dapm_widgets),
+	.dapm_routes = qcs6490_dapm_routes,
+	.num_dapm_routes = ARRAY_SIZE(qcs6490_dapm_routes),
+	.num_wsa_spkr = 2,
+	.wcd_jack = true,
+};
+
 static struct snd_soc_common x1e80100_priv_data = {
 	.driver_name = "x1e80100",
 	.dapm_widgets = glymur_dapm_widgets,
@@ -1290,6 +1300,7 @@ static const struct snd_soc_common hawi_priv_data = {
 };
 
 static const struct of_device_id snd_qcs6490_dt_match[] = {
+	{.compatible = "qcom,eliza-sndcard", .data = &eliza_priv_data},
 	{.compatible = "qcom,glymur-sndcard", .data = &glymur_priv_data},
 	{.compatible = "qcom,hawi-sndcard", .data = &hawi_priv_data},
 	{.compatible = "qcom,kaanapali-sndcard", .data = &kaanapali_priv_data},
