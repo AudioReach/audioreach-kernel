@@ -12,8 +12,6 @@ if [ -z "${BUILD_ARGS:-}" ]; then
     BUILD_ARGS="$(sed -E 's/#.*$//' "$BUILD_OPTIONS_FILE" | sed '/^[[:space:]]*$/d' | tr '\n' ' ')"
 fi
 
-
-
 echo "Running build script..."
 # Build/Compile audioreach-kernel
 source ${GITHUB_WORKSPACE}/install/environment-setup-armv8-2a-qcom-linux
