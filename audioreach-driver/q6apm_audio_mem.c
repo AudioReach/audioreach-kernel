@@ -1457,7 +1457,7 @@ err_cdev:
 err_device:
 	class_destroy(mem_data->mem_class);
 err_class:
-	unregister_chrdev_region(0, MINOR_NUMBER_COUNT);
+	unregister_chrdev_region(mem_data->mem_major, MINOR_NUMBER_COUNT);
 	return ret;
 }
 
@@ -1466,7 +1466,7 @@ static int msm_audio_mem_unreg_chrdev(struct msm_audio_mem_private *mem_data)
 	cdev_del(&mem_data->cdev);
 	device_destroy(mem_data->mem_class, mem_data->mem_major);
 	class_destroy(mem_data->mem_class);
-	unregister_chrdev_region(0, MINOR_NUMBER_COUNT);
+	unregister_chrdev_region(mem_data->mem_major, MINOR_NUMBER_COUNT);
 	return 0;
 }
 
