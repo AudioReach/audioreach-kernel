@@ -1,0 +1,102 @@
+name: trigger_lava_on_success
+
+on:
+  # Needs secrets for LAVA, which pull_request runs from forks do not get.
+  # Only artifacts of the triggering run are downloaded, no PR code is run.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: ["pre_merge_build"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  prepare_matrix:
+    permissions:
+      contents: read
+      actions: read
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      test_matrix: ${{ steps.matrix.outputs.test_matrix }}
+      build_urls: ${{ steps.read_url.outputs.build_urls }}
+
+    steps:
+      - name: Download test matrix artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: test-matrix
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download presigned URL artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: presigned_url_*.txt
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: presigned_urls
+          merge-multiple: true
+
+      - name: Read presigned URLs
+        id: read_url
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const baseDir = 'presigned_urls'
+            const entries = fs.readdirSync(baseDir)
+
+            console.log('Entries:', entries)
+
+            if (entries.length === 0) {
+              throw new Error('No presigned URL files found')
+            }
+
+            const urls = {}
+
+            for (const entry of entries) {
+              const fullPath = path.join(baseDir, entry)
+              if (fs.statSync(fullPath).isFile()) {
+                const content = fs.readFileSync(fullPath, 'utf8').trim()
+                urls[entry] = content
+                console.log(`Loaded ${entry}: ${content}`)
+              }
+            }
+
+            if (Object.keys(urls).length === 0) {
+              throw new Error('No valid presigned URL files found')
+            }
+
+            core.setOutput('build_urls', JSON.stringify(urls))
+
+      - name: Re-upload presigned URL artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: presigned_urls
+          path: presigned_urls
+
+      - name: Read matrix JSON
+        id: matrix
+        shell: bash
+        run: |
+          test -f test_matrix.json
+          MATRIX=$(cat test_matrix.json)
+          echo "test_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  trigger_lava:
+    needs: prepare_matrix
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+      pull-requests: write
+    uses: Audioreach/audioreach-workflows/.github/workflows/test.yml@master
+    secrets: inherit
+    with:
+      build_matrix: ${{ needs.prepare_matrix.outputs.test_matrix }}
+      build_urls: ${{ needs.prepare_matrix.outputs.build_urls }}
+
