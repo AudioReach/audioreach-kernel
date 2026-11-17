@@ -558,7 +558,10 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 			*link_name = "CODEC_DMA-LPAIF_VA-TX-0";
 		break;
 	case RX_CODEC_DMA_RX_0:
-		*link_name = "CODEC_DMA-LPAIF_RXTX-RX-0";
+		if (qaif_interface)
+			*link_name = "CODEC_DMA-QAIF-RX-2";
+		else
+			*link_name = "CODEC_DMA-LPAIF_RXTX-RX-0";
 		break;
 	case RX_CODEC_DMA_RX_1:
 		if (qaif_interface)
@@ -568,7 +571,10 @@ static void audioreach_get_link_name(const char **link_name, int dai_id,
 		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-0";
 		break;
 	case TX_CODEC_DMA_TX_3:
-		*link_name = "CODEC_DMA-LPAIF_RXTX-TX-3";
+		if (qaif_interface)
+			*link_name = "CODEC_DMA-QAIF-TX-0";
+		else
+			*link_name = "CODEC_DMA-LPAIF_RXTX-TX-3";
 		break;
 	case DISPLAY_PORT_RX_0:
 		*link_name = "DISPLAY_PORT-RX";
