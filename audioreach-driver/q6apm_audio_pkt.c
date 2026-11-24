@@ -916,8 +916,6 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 	spin_unlock_irqrestore(&apm->queue_lock, flags);
 
 
-	/* wake up any blocking processes, waiting for new data */
-	wake_up_interruptible(&apm->readq);
 	if (hdr->opcode == APM_CMD_RSP_GET_SPF_STATE) {
 		result = data->payload;
 		apm->result.opcode = hdr->opcode;
@@ -925,6 +923,8 @@ static int q6apm_audio_pkt_callback_core(const struct gpr_resp_pkt *data, void *
 		/* First word of result it state */
 		apm->state = hdr->opcode;
 	}
+	/* Publish the response before waking command waiters and readers. */
+	wake_up(&apm->readq);
 
 	return 0;
 }
