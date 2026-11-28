@@ -465,65 +465,36 @@ static int msm_audio_mem_assign_aux_audio_region(struct device *dev,
 static int msm_audio_mem_assign_audio_heap(struct device *dev,
 						   struct msm_audio_mem_private *mem_data)
 {
-	struct qcom_scm_vmperm *dst_perms;
+	struct qcom_scm_vmperm dst_perms[] = {
+		{ QCOM_SCM_VMID_HLOS, QCOM_SCM_PERM_RW },
+		{ QCOM_SCM_VMID_MSS_MSA, QCOM_SCM_PERM_RW },
+		{ QCOM_SCM_VMID_LPASS, QCOM_SCM_PERM_RW },
+	};
 	u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
-	int num_vmids, dst_count = 0;
 	int ret = 0;
-	int i;
-	u32 vmid;
 
 	if (!mem_data->use_mss_msa_vmid || mem_data->audio_heap_hyp_assigned)
 		return 0;
 
-	num_vmids = of_property_count_u32_elems(dev->of_node, "qcom,vmid");
-	if (num_vmids < 0) {
-		dev_err(dev, "%s: qcom,vmid missing for MDSP audio heap\n",
-			__func__);
-		return num_vmids;
-	}
-
-	dst_perms = kcalloc(num_vmids + 1, sizeof(*dst_perms), GFP_KERNEL);
-	if (!dst_perms)
-		return -ENOMEM;
-
-	dst_perms[dst_count].vmid = QCOM_SCM_VMID_HLOS;
-	dst_perms[dst_count].perm = QCOM_SCM_PERM_RW;
-	dst_count++;
-
-	for (i = 0; i < num_vmids; i++) {
-		ret = of_property_read_u32_index(dev->of_node, "qcom,vmid", i, &vmid);
-		if (ret)
-			goto free_dst_perms;
-
-		if (vmid == QCOM_SCM_VMID_HLOS)
-			continue;
-
-		dst_perms[dst_count].vmid = vmid;
-		dst_perms[dst_count].perm = QCOM_SCM_PERM_RW;
-		dst_count++;
-	}
-
 	ret = qcom_scm_assign_mem(mem_data->audio_heap_base,
 					       mem_data->audio_heap_size, &src_perms,
-					       dst_perms, dst_count);
+					       dst_perms, ARRAY_SIZE(dst_perms));
 	if (ret) {
 		dev_err(dev,
 			"%s: audio heap assign failed ret=%d base=%pa size=%zu\n",
 			__func__, ret, &mem_data->audio_heap_base,
 			mem_data->audio_heap_size);
-		goto free_dst_perms;
+		return ret;
 	}
 
 	mem_data->audio_heap_hyp_assigned = true;
 	mem_data->audio_heap_perms = src_perms;
 
 	ret = msm_audio_mem_assign_aux_audio_region(dev, mem_data,
-						     dst_perms, dst_count);
+						     dst_perms, ARRAY_SIZE(dst_perms));
 	if (ret)
 		msm_audio_mem_unassign_audio_heap(dev, mem_data);
 
-free_dst_perms:
-	kfree(dst_perms);
 	return ret;
 }
 
@@ -597,9 +568,15 @@ static int msm_audio_mem_register_audio_heap(struct platform_device *pdev,
 	int ret;
 	int i;
 
-	if (!mem_data->use_mss_msa_vmid)
-		return 0;
-
+	/*
+	 * Heap registration (gen_pool allocator + dma_heap_add) must be
+	 * independent of MSS/MSA VMID ownership transfer: use_mss_msa_vmid
+	 * only governs whether msm_audio_mem_assign_audio_heap() below
+	 * performs an SCM hypervisor assign, and that function is already
+	 * separately self-gated on the same flag. Platforms with no
+	 * "memory-region" property still correctly no-op via the !rmem
+	 * check below, so no VMID precondition is lost by proceeding here.
+	 */
 	for (i = 0; i < ARRAY_SIZE(rmem_indices); i++) {
 		rmem_node = of_parse_phandle(dev->of_node, "memory-region",
 						     rmem_indices[i]);
@@ -664,30 +641,6 @@ msm_audio_mem_register_audio_heap(struct platform_device *pdev,
 	return 0;
 }
 #endif
-
-static bool msm_audio_mem_uses_mss_msa_vmid(struct device *dev)
-{
-	int num_vmids;
-	int i;
-	u32 vmid;
-
-	if (!dev || !dev->of_node)
-		return false;
-
-	num_vmids = of_property_count_u32_elems(dev->of_node, "qcom,vmid");
-	if (num_vmids <= 0)
-		return false;
-
-	for (i = 0; i < num_vmids; i++) {
-		if (of_property_read_u32_index(dev->of_node, "qcom,vmid", i, &vmid))
-			return false;
-
-		if (vmid == QCOM_SCM_VMID_MSS_MSA)
-			return true;
-	}
-
-	return false;
-}
 
 #ifdef QCOM_HYP_ASSIGN
 static int msm_audio_mem_get_hyp_map_perms(struct msm_audio_mem_private *mem_data,
@@ -1476,6 +1429,7 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 	u64 smmu_sid = 0;
 	u64 smmu_sid_mask = 0;
 	struct device *dev = &pdev->dev;
+	gpr_device_t *gdev;
 	struct of_phandle_args iommuspec;
 	struct msm_audio_mem_private *msm_audio_mem_data = NULL;
 
@@ -1493,7 +1447,7 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 
 
 	msm_audio_mem_data->driver_name = "msm_audio_mem";
-	msm_audio_mem_data->use_mss_msa_vmid = msm_audio_mem_uses_mss_msa_vmid(dev);
+	gdev = dev->parent ? to_apr_device(dev->parent) : NULL;
 
 	/* Enable SMMU only if DT has an 'iommus' property */
 	if (of_find_property(dev->of_node, "iommus", NULL))
@@ -1522,6 +1476,10 @@ static int q6apm_audio_mem_probe(struct platform_device *pdev)
 		if (msm_audio_mem_data->smmu_enabled)
 			msm_audio_mem_data->smmu_sid_bits = smmu_sid << MSM_AUDIO_SMMU_SID_OFFSET;
 	}
+	/* Match Config1: MODEM without a valid IOMMU SID uses SCM carveouts. */
+	msm_audio_mem_data->use_mss_msa_vmid =
+		gdev && gdev->domain_id == GPR_DOMAIN_ID_MODEM &&
+		!msm_audio_mem_data->smmu_enabled;
 
 	if (!rc) {
 		msm_audio_mem_data->device_status |= MSM_AUDIO_MEM_PROBED;
